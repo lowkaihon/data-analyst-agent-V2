@@ -5,8 +5,10 @@
 CREATE TABLE IF NOT EXISTS datasets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   file_name TEXT NOT NULL,
-  context_note TEXT,
+  user_context TEXT,
+  table_name TEXT NOT NULL,
   row_count INTEGER DEFAULT 0,
+  column_count INTEGER DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

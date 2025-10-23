@@ -105,7 +105,7 @@ export function SQLTab({ datasetId }: SQLTabProps) {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <pre className="overflow-x-auto rounded bg-muted p-3 text-xs font-mono">{run.sql}</pre>
+                  <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded bg-muted p-3 text-xs font-mono">{run.sql}</pre>
                   <div className="mt-2 flex items-center gap-4 text-xs text-muted-foreground">
                     <span>{run.rows} rows</span>
                     <span>{run.duration_ms}ms</span>

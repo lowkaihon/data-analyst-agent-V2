@@ -1,12 +1,13 @@
 "use client"
 
 import { useState } from "react"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, Download, FileText } from "lucide-react"
+import { Download, FileText, Loader2, Eye, Edit } from "lucide-react"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
 
 interface ReportTabProps {
   datasetId: string
@@ -15,8 +16,8 @@ interface ReportTabProps {
 export function ReportTab({ datasetId }: ReportTabProps) {
   const [title, setTitle] = useState("Data Analysis Report")
   const [markdown, setMarkdown] = useState("")
-  const [loading, setLoading] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [viewMode, setViewMode] = useState<"preview" | "edit">("preview")
 
   const handleGenerateReport = async () => {
     setGenerating(true)
@@ -35,6 +36,7 @@ export function ReportTab({ datasetId }: ReportTabProps) {
 
       setTitle(result.title)
       setMarkdown(result.markdown)
+      setViewMode("preview") // Switch to preview after generation
     } catch (err) {
       console.error("Failed to generate report:", err)
     } finally {
@@ -55,70 +57,101 @@ export function ReportTab({ datasetId }: ReportTabProps) {
   }
 
   return (
-    <ScrollArea className="h-full">
-      <div className="p-4">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold">Report</h3>
-            <p className="text-sm text-muted-foreground">Generate a markdown report from pinned insights</p>
-          </div>
-          <div className="flex gap-2">
-            <Button onClick={handleGenerateReport} disabled={generating}>
-              {generating ? (
+    <div className="h-full flex flex-col p-4 gap-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold">Report</h3>
+          <p className="text-sm text-muted-foreground">Generate a comprehensive analysis report</p>
+        </div>
+        <div className="flex gap-2">
+          {/* Preview/Edit Toggle */}
+          {markdown.trim() && (
+            <Button
+              onClick={() => setViewMode(viewMode === "preview" ? "edit" : "preview")}
+              size="sm"
+              variant="outline"
+              className="gap-2"
+            >
+              {viewMode === "preview" ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Generating...
+                  <Edit className="h-4 w-4" />
+                  Edit
                 </>
               ) : (
                 <>
-                  <FileText className="mr-2 h-4 w-4" />
-                  Generate Report
+                  <Eye className="h-4 w-4" />
+                  Preview
                 </>
               )}
             </Button>
-            {markdown && (
-              <Button onClick={handleDownload} variant="outline">
-                <Download className="mr-2 h-4 w-4" />
-                Download
-              </Button>
+          )}
+
+          {/* Generate Report Button */}
+          <Button onClick={handleGenerateReport} size="sm" variant="outline" className="gap-2" disabled={generating}>
+            {generating ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <FileText className="h-4 w-4" />
+                Generate Report
+              </>
             )}
+          </Button>
+
+          {/* Download Button */}
+          <Button onClick={handleDownload} size="sm" variant="outline" className="gap-2" disabled={!markdown.trim()}>
+            <Download className="h-4 w-4" />
+            Download
+          </Button>
+        </div>
+      </div>
+
+      {/* Content Area */}
+      {!markdown.trim() ? (
+        // Empty state
+        <div className="flex flex-1 items-center justify-center">
+          <div className="text-center">
+            <FileText className="mx-auto h-12 w-12 text-muted-foreground" />
+            <p className="mt-4 text-sm text-muted-foreground">No report generated yet</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Click "Generate Report" to create an AI-powered analysis report
+            </p>
           </div>
         </div>
+      ) : viewMode === "edit" ? (
+        // Edit mode
+        <div className="flex-1 flex flex-col gap-4 overflow-hidden">
+          <div>
+            <Label htmlFor="title">Report Title</Label>
+            <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} className="mt-1" />
+          </div>
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <Label htmlFor="markdown">Markdown Content</Label>
+            <Textarea
+              id="markdown"
+              value={markdown}
+              onChange={(e) => setMarkdown(e.target.value)}
+              className="flex-1 mt-1 font-mono text-sm resize-none"
+            />
+          </div>
+        </div>
+      ) : (
+        // Preview mode
+        <div className="flex-1 overflow-auto border rounded-md p-6 prose prose-sm max-w-none dark:prose-invert">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown}</ReactMarkdown>
+        </div>
+      )}
 
-        {markdown ? (
-          <div className="flex flex-col gap-4">
-            <div>
-              <Label htmlFor="title">Report Title</Label>
-              <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} className="mt-1" />
-            </div>
-            <div>
-              <Label htmlFor="markdown">Markdown Content</Label>
-              <Textarea
-                id="markdown"
-                value={markdown}
-                onChange={(e) => setMarkdown(e.target.value)}
-                className="mt-1 min-h-[400px] font-mono text-sm"
-              />
-            </div>
-            <div className="rounded-lg border bg-muted p-4">
-              <h4 className="mb-2 text-sm font-semibold">Preview</h4>
-              <div className="prose prose-sm max-w-none">
-                <pre className="whitespace-pre-wrap text-xs">{markdown}</pre>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="flex h-64 items-center justify-center">
-            <div className="text-center">
-              <FileText className="mx-auto h-12 w-12 text-muted-foreground" />
-              <p className="mt-4 text-sm text-muted-foreground">No report generated yet</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Click "Generate Report" to create one from pinned insights
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
-    </ScrollArea>
+      {/* Stats Footer */}
+      {markdown.trim() && (
+        <div className="text-xs text-muted-foreground">
+          {markdown.split("\n").length} lines • {markdown.length} characters
+        </div>
+      )}
+    </div>
   )
 }

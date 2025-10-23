@@ -29,11 +29,11 @@ function AnalyzeContent() {
   return (
     <div className="h-screen w-full">
       <ResizablePanelGroup direction="horizontal" className="h-full">
-        <ResizablePanel defaultSize={50} minSize={30}>
+        <ResizablePanel defaultSize={50} minSize={30} className="flex flex-col overflow-hidden">
           <ChatPanel datasetId={datasetId} />
         </ResizablePanel>
         <ResizableHandle withHandle />
-        <ResizablePanel defaultSize={50} minSize={30}>
+        <ResizablePanel defaultSize={50} minSize={30} className="flex flex-col overflow-hidden">
           <DatasetTabs datasetId={datasetId} />
         </ResizablePanel>
       </ResizablePanelGroup>

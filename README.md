@@ -85,11 +85,21 @@ cp .env.example .env.local
 \`\`\`
 
 4. Initialize the database:
-\`\`\`bash
-# Run the SQL scripts in /scripts to create tables
-# Execute scripts/001_create_schema.sql in your Supabase SQL editor
-# Execute scripts/002_initialize_database.sql
-\`\`\`
+
+   **For first-time setup:**
+   \`\`\`bash
+   # Run scripts/002_initialize_database.sql in your Supabase SQL editor
+   # This creates all necessary tables and indexes
+   \`\`\`
+
+   **If you need to reset an existing database:**
+   \`\`\`bash
+   # ⚠️  WARNING: This will delete all data!
+   # First run: scripts/000_reset_database.sql
+   # Then run: scripts/002_initialize_database.sql
+   \`\`\`
+
+   > **Note**: The database schema was updated to include \`table_name\`, \`column_count\`, and \`user_context\` fields. If you ran the old schema, you must reset your database using the scripts above.
 
 5. Run the development server:
 \`\`\`bash

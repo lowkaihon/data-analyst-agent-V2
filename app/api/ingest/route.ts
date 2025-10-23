@@ -93,13 +93,19 @@ export async function POST(req: NextRequest) {
 
     const supabase = await createClient()
 
+    // Generate table name first (before creating the dataset)
+    const tempId = crypto.randomUUID()
+    const tableName = sanitizeTableName(tempId)
+
     // Create dataset record
     const { data: dataset, error: datasetError } = await supabase
       .from("datasets")
       .insert({
         file_name: file.name,
-        context_note: context || null,
+        user_context: context || null,
+        table_name: tableName,
         row_count: records.length,
+        column_count: columns.length,
       })
       .select()
       .single()
@@ -114,7 +120,6 @@ export async function POST(req: NextRequest) {
     const columnTypes = inferColumnTypes(records.slice(0, sampleSize))
 
     const pool = getPostgresPool()
-    const tableName = sanitizeTableName(dataset.id)
     const createTableSQL = generateCreateTableSQL(tableName, columnTypes)
 
     try {

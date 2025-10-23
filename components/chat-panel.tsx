@@ -2,13 +2,16 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useChat } from "@ai-sdk/react"
+import { DefaultChatTransport } from "ai"
 import { Send, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Card } from "@/components/ui/card"
+import { Message, MessageContent, MessageAvatar } from "@/components/ai-elements/message"
+import { Tool, ToolHeader, ToolContent, ToolInput, ToolOutput } from "@/components/ai-elements/tool"
+import type { ToolUIPart } from "ai"
 
 interface ChatPanelProps {
   datasetId: string
@@ -16,13 +19,15 @@ interface ChatPanelProps {
 
 export function ChatPanel({ datasetId }: ChatPanelProps) {
   const [input, setInput] = useState("")
-  const [hasInitialized, setHasInitialized] = useState(false)
+  const hasInitializedRef = useRef(false)
   const [error, setError] = useState<string | null>(null)
 
   console.log("[v0] ChatPanel initialized with datasetId:", datasetId)
 
   const { messages, sendMessage, status } = useChat({
-    api: `/api/chat/${datasetId}`,
+    transport: new DefaultChatTransport({
+      api: `/api/chat/${datasetId}`,
+    }),
     onError: (error) => {
       console.error("[v0] Chat error:", error)
       setError(error.message)
@@ -30,20 +35,14 @@ export function ChatPanel({ datasetId }: ChatPanelProps) {
     onFinish: (message) => {
       console.log("[v0] Chat finished:", message)
     },
-    onResponse: (response) => {
-      console.log("[v0] Chat response received:", response.status, response.statusText)
-      if (!response.ok) {
-        console.error("[v0] Chat response not OK:", response.status, response.statusText)
-      }
-    },
   })
 
   console.log("[v0] Chat status:", status, "Messages count:", messages.length)
 
   useEffect(() => {
-    if (!hasInitialized && status === "ready" && messages.length === 0) {
+    if (!hasInitializedRef.current && status === "ready" && messages.length === 0) {
       console.log("[v0] Sending initial greeting message")
-      setHasInitialized(true)
+      hasInitializedRef.current = true
       try {
         sendMessage({ text: "__INIT__" })
       } catch (err) {
@@ -51,11 +50,11 @@ export function ChatPanel({ datasetId }: ChatPanelProps) {
         setError(err instanceof Error ? err.message : "Failed to send initial message")
       }
     }
-  }, [hasInitialized, status, messages.length, sendMessage])
+  }, [status, messages.length, sendMessage])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!input.trim() || status === "in_progress") return
+    if (!input.trim() || status === "streaming" || status === "submitted") return
 
     console.log("[v0] Sending message:", input, "with datasetId:", datasetId)
     try {
@@ -69,7 +68,7 @@ export function ChatPanel({ datasetId }: ChatPanelProps) {
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
       <div className="border-b bg-background p-4">
         <h2 className="text-lg font-semibold">Chat</h2>
@@ -77,7 +76,7 @@ export function ChatPanel({ datasetId }: ChatPanelProps) {
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1 p-4">
+      <div className="flex-1 overflow-y-auto p-4">
         <div className="flex flex-col gap-4">
           {error && (
             <Card className="border-destructive bg-destructive/10 p-3">
@@ -93,34 +92,77 @@ export function ChatPanel({ datasetId }: ChatPanelProps) {
             </div>
           )}
 
-          {messages.map((message) => {
+          {messages.map((message, index) => {
             const isInitMessage =
               message.role === "user" && message.parts.some((p) => p.type === "text" && p.text === "__INIT__")
             if (isInitMessage) return null
 
+            // Extract text parts
+            const textParts = message.parts.filter((p) => p.type === "text")
+            const textContent = textParts.map((p) => p.type === "text" ? p.text : "").join("")
+
+            // Extract tool call parts
+            const toolParts = message.parts.filter((p) => p.type?.startsWith("tool-")) as ToolUIPart[]
+
             return (
-              <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                <Card
-                  className={`max-w-[80%] p-3 ${
-                    message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
-                  }`}
-                >
-                  {message.parts.map((part, index) => {
-                    if (part.type === "text") {
-                      return (
-                        <p key={index} className="whitespace-pre-wrap text-sm">
-                          {part.text}
-                        </p>
-                      )
-                    }
-                    return null
+              <Message key={`${index}-${message.id}`} from={message.role}>
+                {message.role === "assistant" && (
+                  <MessageAvatar
+                    src="https://api.dicebear.com/7.x/bottts/svg?seed=assistant"
+                    name="AI"
+                  />
+                )}
+
+                <MessageContent variant="flat">
+                  {/* Render text content */}
+                  {textContent && (
+                    <div className="whitespace-pre-wrap text-sm">
+                      {textContent}
+                    </div>
+                  )}
+
+                  {/* Render tool calls */}
+                  {toolParts.map((part, i) => {
+                    // Determine tool state based on what data is available
+                    const toolState: ToolUIPart["state"] = part.errorText
+                      ? "output-error"
+                      : part.output !== undefined
+                        ? "output-available"
+                        : part.input !== undefined
+                          ? "input-available"
+                          : "input-streaming"
+
+                    return (
+                      <Tool key={i} defaultOpen={false}>
+                        <ToolHeader type={part.type} state={toolState} />
+                        <ToolContent>
+                          {part.input ? <ToolInput input={part.input as any} /> : null}
+                          {(part.output || part.errorText) ? (
+                            <ToolOutput output={part.output as any} errorText={part.errorText} />
+                          ) : null}
+                          {toolState === "input-streaming" ? (
+                            <div className="p-4 text-muted-foreground text-sm">
+                              <Loader2 className="inline-block mr-2 h-4 w-4 animate-spin" />
+                              Executing tool...
+                            </div>
+                          ) : null}
+                        </ToolContent>
+                      </Tool>
+                    )
                   })}
-                </Card>
-              </div>
+                </MessageContent>
+
+                {message.role === "user" && (
+                  <MessageAvatar
+                    src="https://api.dicebear.com/7.x/avataaars/svg?seed=user"
+                    name="You"
+                  />
+                )}
+              </Message>
             )
           })}
 
-          {status === "in_progress" && (
+          {(status === "streaming" || status === "submitted") && (
             <div className="flex justify-start">
               <Card className="bg-muted p-3">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -128,7 +170,7 @@ export function ChatPanel({ datasetId }: ChatPanelProps) {
             </div>
           )}
         </div>
-      </ScrollArea>
+      </div>
 
       {/* Input */}
       <div className="border-t bg-background p-4">
@@ -145,7 +187,7 @@ export function ChatPanel({ datasetId }: ChatPanelProps) {
               }
             }}
           />
-          <Button type="submit" size="icon" disabled={!input.trim() || status === "in_progress"}>
+          <Button type="submit" size="icon" disabled={!input.trim() || status === "streaming" || status === "submitted"}>
             <Send className="h-4 w-4" />
           </Button>
         </form>

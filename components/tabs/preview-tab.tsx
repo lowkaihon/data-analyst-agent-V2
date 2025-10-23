@@ -53,29 +53,31 @@ export function PreviewTab({ datasetId }: PreviewTabProps) {
   }
 
   return (
-    <div className="p-4">
-      <Table className="min-w-max">
-        <TableHeader>
-          <TableRow>
-            {columns.map((col) => (
-              <TableHead key={col} className="font-semibold whitespace-nowrap">
-                {col}
-              </TableHead>
-            ))}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {data.map((row, idx) => (
-            <TableRow key={idx}>
+    <div className="flex flex-col h-full">
+      <div className="flex-1 overflow-auto p-4">
+        <Table className="min-w-max">
+          <TableHeader>
+            <TableRow>
               {columns.map((col) => (
-                <TableCell key={col} className="whitespace-nowrap">
-                  {String(row[col] ?? "")}
-                </TableCell>
+                <TableHead key={col} className="font-semibold whitespace-nowrap">
+                  {col}
+                </TableHead>
               ))}
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {data.map((row, idx) => (
+              <TableRow key={idx}>
+                {columns.map((col) => (
+                  <TableCell key={col} className="whitespace-nowrap">
+                    {String(row[col] ?? "")}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   )
 }

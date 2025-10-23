@@ -26,7 +26,7 @@ export function DatasetTabs({ datasetId }: DatasetTabsProps) {
       </div>
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-1 flex-col">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
         <TabsList className="w-full justify-start rounded-none border-b bg-background px-4">
           <TabsTrigger value="preview" className="gap-2">
             <Database className="h-4 w-4" />
@@ -50,7 +50,7 @@ export function DatasetTabs({ datasetId }: DatasetTabsProps) {
           </TabsTrigger>
         </TabsList>
 
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-hidden">
           <TabsContent value="preview" className="h-full m-0">
             <PreviewTab datasetId={datasetId} />
           </TabsContent>

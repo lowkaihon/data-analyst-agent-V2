@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { sanitizeTableName, validateReadOnlySQL, ensureLimit } from "@/lib/sql-guard"
+import { validateReadOnlySQL, ensureLimit } from "@/lib/sql-guard"
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,7 +20,19 @@ export async function POST(req: NextRequest) {
     const safeSql = ensureLimit(sql, limit || 500)
 
     const supabase = await createClient()
-    const tableName = sanitizeTableName(datasetId)
+
+    // Fetch dataset to get table name
+    const { data: dataset, error: datasetError } = await supabase
+      .from("datasets")
+      .select("table_name")
+      .eq("id", datasetId)
+      .single()
+
+    if (datasetError || !dataset) {
+      return NextResponse.json({ error: "Dataset not found" }, { status: 404 })
+    }
+
+    const tableName = dataset.table_name
 
     const startTime = Date.now()
 

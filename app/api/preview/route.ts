@@ -1,6 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { sanitizeTableName } from "@/lib/sql-guard"
 
 export async function GET(req: NextRequest) {
   try {
@@ -12,7 +11,19 @@ export async function GET(req: NextRequest) {
     }
 
     const supabase = await createClient()
-    const tableName = sanitizeTableName(datasetId)
+
+    // Fetch dataset to get table name
+    const { data: dataset, error: datasetError } = await supabase
+      .from("datasets")
+      .select("table_name")
+      .eq("id", datasetId)
+      .single()
+
+    if (datasetError || !dataset) {
+      return NextResponse.json({ error: "Dataset not found" }, { status: 404 })
+    }
+
+    const tableName = dataset.table_name
 
     // Fetch first 100 rows
     const { data, error } = await supabase.from(tableName).select("*").limit(100)

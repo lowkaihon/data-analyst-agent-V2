@@ -3,8 +3,10 @@
 export interface Dataset {
   id: string
   file_name: string
-  context_note: string | null
+  user_context: string | null
+  table_name: string
   row_count: number
+  column_count: number
   created_at: string
 }
 
