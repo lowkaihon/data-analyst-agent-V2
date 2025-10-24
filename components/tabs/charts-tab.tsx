@@ -81,7 +81,7 @@ export function ChartsTab({ datasetId }: ChartsTabProps) {
             <p className="text-sm text-muted-foreground">No charts yet</p>
           </div>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="flex flex-col gap-4">
             {charts.map((chart) => (
               <Card key={chart.id}>
                 <CardHeader>

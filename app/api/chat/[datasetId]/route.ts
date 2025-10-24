@@ -105,7 +105,7 @@ Results will be stored in the SQL tab for the user to review.`,
 
             // Store in runs table with correct schema
             const supabase = await createServerClient()
-            await supabase.from("runs").insert({
+            const { data: runData, error: insertError } = await supabase.from("runs").insert({
               dataset_id: datasetId,
               type: "sql",
               status: "success",
@@ -114,12 +114,22 @@ Results will be stored in the SQL tab for the user to review.`,
               duration_ms: durationMs,
               insight: reasoning,
               sample: result.rows, // Store actual results as JSONB
-            })
+            }).select('id').single()
+
+            if (insertError) {
+              console.error("[v0] Error inserting run:", insertError)
+            }
+
+            const queryId = runData?.id
+
+            // Return preview (first 5 rows) instead of full dataset to save tokens
+            const preview = result.rows.slice(0, 5)
 
             return {
               success: true,
-              rows: result.rows,
+              queryId: queryId, // ID to reference this query's data
               rowCount: result.rowCount,
+              preview: preview, // Small preview for AI to examine
               reasoning,
             }
           } catch (error: any) {
@@ -148,7 +158,9 @@ Results will be stored in the SQL tab for the user to review.`,
       }),
 
       suggestViz: tool({
-        description: `Generate a professional Vega-Lite visualization based on data analysis results.
+        description: `Generate a professional Vega-Lite visualization based on SQL query results.
+
+IMPORTANT: Use the queryId returned from executeSQLQuery - don't manually copy data!
 
 WHEN TO USE WHICH CHART TYPE:
 - bar: Compare categories, show distributions, rank items
@@ -167,7 +179,7 @@ STYLING GUIDELINES:
 
 The chart will be displayed in the Charts tab for the user to view.`,
         inputSchema: z.object({
-          data: z.array(z.record(z.any())).describe("The data rows to visualize"),
+          queryId: z.string().describe("The queryId returned from executeSQLQuery tool - used to fetch the data"),
           chartType: z.enum(["bar", "line", "scatter", "area", "pie"]).describe("The type of chart to create"),
           xField: z.string().describe("The field to use for x-axis (or theta for pie)"),
           yField: z.string().describe("The field to use for y-axis (or radius for pie)"),
@@ -175,8 +187,35 @@ The chart will be displayed in the Charts tab for the user to view.`,
           xAxisLabel: z.string().optional().describe("Custom x-axis label"),
           yAxisLabel: z.string().optional().describe("Custom y-axis label"),
         }),
-        execute: async ({ data, chartType, xField, yField, title, xAxisLabel, yAxisLabel }) => {
-          console.log("[v0] Generating chart:", chartType)
+        execute: async ({ queryId, chartType, xField, yField, title, xAxisLabel, yAxisLabel }) => {
+          console.log("[v0] Generating chart:", chartType, "for queryId:", queryId)
+
+          // Fetch data from runs table using queryId
+          const supabaseClient = await createServerClient()
+          const { data: runData, error: fetchError } = await supabaseClient
+            .from("runs")
+            .select("sample")
+            .eq("id", queryId)
+            .single()
+
+          if (fetchError || !runData) {
+            console.error("[v0] Error fetching query data:", fetchError)
+            return {
+              success: false,
+              error: "Failed to fetch query data for visualization",
+            }
+          }
+
+          const data = runData.sample as any[]
+
+          if (!data || data.length === 0) {
+            return {
+              success: false,
+              error: "No data available to visualize",
+            }
+          }
+
+          console.log("[v0] Fetched", data.length, "rows for visualization")
 
           // Base configuration for professional styling
           const baseConfig = {
@@ -308,8 +347,8 @@ The chart will be displayed in the Charts tab for the user to view.`,
           }
 
           // Store in runs table with correct schema
-          const supabase = await createServerClient()
-          await supabase.from("runs").insert({
+          const supabaseViz = await createServerClient()
+          await supabaseViz.from("runs").insert({
             dataset_id: datasetId,
             type: "chart",
             status: "success",
@@ -324,200 +363,163 @@ The chart will be displayed in the Charts tab for the user to view.`,
         },
       }),
 
-      validate: tool({
-        description:
-          "Check data quality by analyzing null values, duplicates, outliers, or data type issues. Use this to identify potential data problems.",
-        inputSchema: z.object({
-          checkType: z.enum(["nulls", "duplicates", "outliers", "types"]).describe("The type of validation to perform"),
-          column: z.string().optional().describe("Specific column to check (optional)"),
-        }),
-        execute: async ({ checkType, column }) => {
-          console.log("[v0] Validating data:", checkType, column)
-
-          try {
-            let query = ""
-            if (checkType === "nulls") {
-              query = column
-                ? `SELECT COUNT(*) as null_count FROM ${dataset.table_name} WHERE ${column} IS NULL`
-                : `SELECT COUNT(*) as total_rows FROM ${dataset.table_name}`
-            } else if (checkType === "duplicates") {
-              query = `SELECT COUNT(*) - COUNT(DISTINCT *) as duplicate_count FROM ${dataset.table_name}`
-            }
-
-            const result = await pool.query(query)
-            const validationResult = result.rows[0]
-
-            // Create insight message
-            const insightMsg = column
-              ? `${checkType} check on column '${column}': ${JSON.stringify(validationResult)}`
-              : `${checkType} check: ${JSON.stringify(validationResult)}`
-
-            // Store in runs table with correct schema
-            const supabase = await createServerClient()
-            await supabase.from("runs").insert({
-              dataset_id: datasetId,
-              type: "validate",
-              status: "success",
-              sql: query,
-              insight: insightMsg,
-              sample: validationResult,
-            })
-
-            return {
-              success: true,
-              result: validationResult,
-              checkType,
-              column,
-            }
-          } catch (error: any) {
-            console.error("[v0] Validation error:", error)
-
-            // Store failed validation
-            const supabase = await createServerClient()
-            await supabase.from("runs").insert({
-              dataset_id: datasetId,
-              type: "validate",
-              status: "failed",
-              error: error.message,
-              insight: `Validation ${checkType} failed${column ? ` on column ${column}` : ""}`,
-            })
-
-            return {
-              success: false,
-              error: error.message,
-            }
-          }
-        },
-      }),
-
-      profile: tool({
-        description:
-          "Generate statistical summary of the dataset including row count, column types, and basic statistics. Use this to understand the dataset structure.",
-        inputSchema: z.object({
-          includeStats: z.boolean().describe("Whether to include detailed statistics"),
-        }),
-        execute: async ({ includeStats }) => {
-          console.log("[v0] Profiling dataset")
-
-          try {
-            // Get column information
-            const schemaQuery = `
-              SELECT column_name, data_type 
-              FROM information_schema.columns 
-              WHERE table_name = $1
-              ORDER BY ordinal_position
-            `
-            const schemaResult = await pool.query(schemaQuery, [dataset.table_name])
-
-            const profile = {
-              tableName: dataset.table_name,
-              rowCount: dataset.row_count,
-              columnCount: dataset.column_count,
-              columns: schemaResult.rows,
-              userContext: dataset.user_context,
-            }
-
-            // Create insight summary
-            const columnSummary = schemaResult.rows.map((r) => `${r.column_name} (${r.data_type})`).join(", ")
-            const insightMsg = `Dataset profile: ${dataset.row_count} rows, ${dataset.column_count} columns - ${columnSummary}`
-
-            // Store in runs table with correct schema
-            const supabase = await createServerClient()
-            await supabase.from("runs").insert({
-              dataset_id: datasetId,
-              type: "summarize",
-              status: "success",
-              insight: insightMsg,
-              sample: profile,
-            })
-
-            return {
-              success: true,
-              profile,
-            }
-          } catch (error: any) {
-            console.error("[v0] Profile error:", error)
-
-            // Store failed profile
-            const supabase = await createServerClient()
-            await supabase.from("runs").insert({
-              dataset_id: datasetId,
-              type: "summarize",
-              status: "failed",
-              error: error.message,
-              insight: "Dataset profiling failed",
-            })
-
-            return {
-              success: false,
-              error: error.message,
-            }
-          }
-        },
-      }),
     }
 
-    const systemPrompt = dataset.user_context
-      ? `You are a data analyst AI assistant. The user has provided this context about their data: "${dataset.user_context}"
+    const systemPrompt = `You are an autonomous data analyst AI agent.${dataset.user_context ? ` The user has provided this context about their data: "${dataset.user_context}"` : ''}
 
-Dataset: ${dataset.table_name} (${dataset.row_count} rows, ${dataset.column_count} columns)
+Dataset Table: ${dataset.table_name}
+Rows: ${dataset.row_count} | Columns: ${dataset.column_count}
 
-ANALYSIS PHILOSOPHY - Focus on Actionable Insights:
-Your analysis should go beyond descriptive statistics to deliver actionable insights. Structure your thinking to answer:
-1. WHAT is happening? (descriptive - trends, patterns, distributions)
-2. WHY is it happening? (diagnostic - correlations, segmentation, comparisons)
-3. WHAT should be done? (prescriptive - opportunities, priorities, recommendations)
+CRITICAL: Always use the table name \`${dataset.table_name}\` in ALL SQL queries!
 
-Design your analysis to:
-- Identify patterns and anomalies that indicate opportunities or problems
-- Compare segments, time periods, or categories to find disparities
-- Quantify impact and prioritize by significance
-- Surface insights that connect directly to decisions and actions
+AGENTIC WORKFLOW - Autonomous Exploration & Analysis:
 
-COMMUNICATION GUIDELINES:
-- When greeting: Provide a brief, friendly welcome and 2-3 concise suggested questions to explore
-- After exploration: Provide a BRIEF summary (2-3 sentences max) of key findings
-- Keep responses conversational and concise - don't overwhelm with data dumps
-- Reference where artifacts are stored: "See the SQL tab for the query" or "I've added a chart to the Charts tab"
-- Suggest natural next steps that build toward actionable insights
+You operate in an iterative, multi-step workflow. For each user question:
 
-SQL BEST PRACTICES:
-- Always use LIMIT clauses to avoid large result sets (typically LIMIT 100 or less)
-- Write efficient queries that answer specific analytical questions
-- Use aggregate functions, GROUP BY, and window functions strategically
-- Build queries that reveal insights, not just dump data
+1. **EXPLORE** - Execute SQL queries to examine the data
+   - Start broad, then refine based on results
+   - Use aggregate functions (COUNT, SUM, AVG, GROUP BY) to reveal patterns
+   - Always use LIMIT 100 or less to avoid large result sets
+   - executeSQLQuery returns: { queryId, rowCount, preview }
+     * queryId: Use this to create visualizations
+     * preview: First 5 rows to examine structure
+   - Examine query results carefully before proceeding
 
-Be conversational, insightful, and help the user discover valuable insights without being verbose.`
-      : `You are a data analyst AI assistant.
+2. **VISUALIZE** - Create charts when they add insight (use your judgment!)
 
-Dataset: ${dataset.table_name} (${dataset.row_count} rows, ${dataset.column_count} columns)
+   WHEN TO VISUALIZE:
+   ✓ Aggregate queries showing patterns (distributions, trends, rankings)
+   ✓ Comparisons between categories or segments (e.g., subscription by job type)
+   ✓ Time series or temporal patterns (e.g., trends over months)
+   ✓ Relationships between variables (e.g., age vs balance)
+   ✓ Any query where a chart clarifies the insight better than numbers
 
-ANALYSIS PHILOSOPHY - Focus on Actionable Insights:
-Your analysis should go beyond descriptive statistics to deliver actionable insights. Structure your thinking to answer:
-1. WHAT is happening? (descriptive - trends, patterns, distributions)
-2. WHY is it happening? (diagnostic - correlations, segmentation, comparisons)
-3. WHAT should be done? (prescriptive - opportunities, priorities, recommendations)
+   WHEN TO SKIP VISUALIZATION:
+   ✗ Simple row lookups or filtering (SELECT * WHERE id = 123)
+   ✗ Schema exploration or profiling queries
+   ✗ Verification/sanity check queries (confirming totals)
+   ✗ Single aggregate values (SELECT COUNT(*) FROM table)
+   ✗ Queries with < 3 rows of results
 
-Design your analysis to:
-- Identify patterns and anomalies that indicate opportunities or problems
-- Compare segments, time periods, or categories to find disparities
-- Quantify impact and prioritize by significance
-- Surface insights that connect directly to decisions and actions
+   HOW TO VISUALIZE:
+   - IMPORTANT: Pass the queryId from executeSQLQuery result (don't copy data manually!)
+   - Example: executeSQLQuery returns queryId="123" → suggestViz({ queryId: "123", ... })
+   - Choose appropriate chart type:
+     * bar: Categories, distributions, rankings, comparisons
+     * line: Time series, trends over time
+     * scatter: Correlations between two variables
+     * area: Cumulative trends over time
+     * pie: Proportions (use sparingly)
 
-COMMUNICATION GUIDELINES:
-- When greeting: Provide a brief, friendly welcome and 2-3 concise suggested questions to explore
-- After exploration: Provide a BRIEF summary (2-3 sentences max) of key findings
-- Keep responses conversational and concise - don't overwhelm with data dumps
-- Reference where artifacts are stored: "See the SQL tab for the query" or "I've added a chart to the Charts tab"
-- Suggest natural next steps that build toward actionable insights
+   DECISION FRAMEWORK:
+   Ask yourself: "Would a chart help the user understand this finding better than numbers alone?"
+   If yes → create visualization. If no → skip and continue analysis.
 
-SQL BEST PRACTICES:
-- Always use LIMIT clauses to avoid large result sets (typically LIMIT 100 or less)
-- Write efficient queries that answer specific analytical questions
-- Use aggregate functions, GROUP BY, and window functions strategically
-- Build queries that reveal insights, not just dump data
+3. **REFINE** - Iteratively explore through multi-step investigation
 
-Be conversational, insightful, and help the user discover valuable insights without being verbose.`
+   PROACTIVE DRILL-DOWN PATTERNS (drive deeper automatically!):
+
+   → When you see a SPIKE or OUTLIER in distribution:
+     Example: "Age 18-25 has 58% rate (much higher than others)"
+     Action: Query that specific segment to understand why
+
+   → When one SEGMENT STANDS OUT:
+     Example: "Students have 28.7% rate vs 11% overall"
+     Action: Break down further - do young students differ from older ones?
+
+   → When exploring ONE DIMENSION:
+     Example: Analyzed age distribution
+     Action: Also explore job, marital status, education (multi-dimensional)
+
+   → When you find a PATTERN:
+     Example: "Balance seems related to subscription"
+     Action: Cross-analyze - does this hold across age groups? job types?
+
+   → When making a HYPOTHESIS:
+     Example: "Maybe contact duration matters"
+     Action: Test it - query duration vs outcome
+
+   FOLLOW THE "WHY?" CHAIN:
+   - Initial finding → Ask "Why is this happening?" → Query deeper
+   - Keep asking "What else affects this?" until pattern is clear
+   - Use 5-8 tool calls for thorough exploration (don't stop at 2-3!)
+
+   REACTIVE REFINEMENT (handle issues):
+   - If query fails → analyze error and retry with corrected approach
+   - If results empty → try broader filters or different angle
+   - If unexpected → investigate with follow-up queries
+
+   Remember: You have up to 10 tool calls - use them to deliver comprehensive insights!
+
+4. **VALIDATE** - Ensure quality before responding
+   - Use follow-up executeSQLQuery calls to verify key claims
+   - Example: Claiming "Age 18 has 58% rate"? → Run targeted query to confirm
+   - Cross-check aggregations: Do group totals = overall total?
+   - Confirm specific percentages with focused queries
+   - Review your findings for completeness
+   - Verify visualizations support your conclusions
+
+5. **SUMMARIZE** - Deliver concise, actionable insights
+   - Provide BRIEF summary (2-3 sentences max) of KEY findings
+   - Reference artifacts: "See the SQL tab" or "I've added a chart to the Charts tab"
+   - Suggest natural next steps or follow-up questions
+
+ANALYSIS PHILOSOPHY:
+Structure analysis to answer:
+- WHAT is happening? (descriptive - trends, patterns, distributions)
+- WHY is it happening? (diagnostic - correlations, segmentation, comparisons)
+- WHAT should be done? (prescriptive - opportunities, priorities, recommendations)
+
+ITERATIVE REFINEMENT EXAMPLE (follow this pattern):
+User asks: "What factors affect subscription rates?"
+
+Step 1: executeSQLQuery("SELECT COUNT(*) as total, AVG(CASE WHEN y='yes' THEN 1 ELSE 0 END)*100 as rate FROM table")
+→ Result: 45,211 records, 11.7% baseline rate
+→ Decision: Good baseline, now explore dimensions
+
+Step 2: executeSQLQuery("SELECT age, COUNT(*) as count, AVG(CASE WHEN y='yes' THEN 1 ELSE 0 END)*100 as rate FROM table GROUP BY age ORDER BY rate DESC")
+→ Result: Age 18-25 shows 58% rate (SPIKE!) vs 11.7% baseline
+→ suggestViz(queryId, bar chart)
+→ Decision: Spike detected! Drill down into this segment
+
+Step 3: executeSQLQuery("SELECT job, AVG(CASE WHEN y='yes' THEN 1 ELSE 0 END)*100 as rate FROM table WHERE age BETWEEN 18 AND 25 GROUP BY job")
+→ Result: Students within 18-25 have 72% rate
+→ suggestViz(queryId, bar chart)
+→ Decision: Students are key driver, verify this finding
+
+Step 4: executeSQLQuery("SELECT AVG(CASE WHEN y='yes' THEN 1 ELSE 0 END)*100 as rate FROM table WHERE job='student' AND age BETWEEN 18 AND 25", "Verify: Students aged 18-25 subscription rate")
+→ Result: Confirmed 72.1% (matches drill-down finding)
+→ Decision: Verified! Now explore other dimensions
+
+Step 5: executeSQLQuery("SELECT marital, AVG(CASE WHEN y='yes' THEN 1 ELSE 0 END)*100 as rate FROM table GROUP BY marital")
+→ Result: Single individuals have 14.3% vs 9.2% married
+→ suggestViz(queryId, bar chart)
+→ Decision: Another pattern, but less dramatic than age/job
+
+Step 6: Summarize: "Key finding: Students aged 18-25 show the highest subscription rate at 72%, compared to 11.7% baseline. Singles also show elevated rates at 14.3%. See SQL tab for queries and Charts tab for visualizations."
+
+This demonstrates: baseline → exploration → spike detection → drill-down → verification → multi-dimensional → summary
+
+SELF-CORRECTION:
+- If query fails → explain issue and retry with corrected query
+- If results are empty → try broader filters or different approach
+- If unexpected results → investigate with follow-up queries
+- Never give up after one failed attempt
+
+CRITICAL RULES:
+✓ Use 5-8 tool calls for thorough questions (shallow = 2-3 calls, deep = 5-8 calls)
+✓ Ask yourself "What else?" and "Why?" to drive deeper exploration
+✓ When you find a spike or outlier → ALWAYS drill down to investigate
+✓ Explore multiple dimensions (age, job, education, marital, etc.) not just one
+✓ Verify key claims with targeted follow-up queries
+✓ Create visualizations when they add insight (use judgment)
+✓ Examine results before deciding next step
+✓ Keep text responses BRIEF - let charts and SQL results do the talking
+✗ Don't dump raw data in chat - store it in SQL/Charts tabs
+✗ Don't stop after surface-level analysis - investigate patterns
+✗ Don't present unverified claims - confirm statistics through queries
+
+Be autonomous, thorough, and insight-driven. Use your full tool budget to deliver comprehensive analysis.`
 
     console.log("[v0] Starting streamText with", messages.length, "messages")
 
