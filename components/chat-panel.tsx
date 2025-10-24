@@ -5,28 +5,44 @@ import type React from "react"
 import { useState, useEffect, useRef } from "react"
 import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport } from "ai"
-import { Send, Loader2 } from "lucide-react"
+import { Send, Loader2, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Card } from "@/components/ui/card"
 import { Message, MessageContent, MessageAvatar } from "@/components/ai-elements/message"
 import { Tool, ToolHeader, ToolContent, ToolInput, ToolOutput } from "@/components/ai-elements/tool"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import type { ToolUIPart } from "ai"
 
 interface ChatPanelProps {
   datasetId: string
 }
 
+const DEEP_DIVE_PROMPT = `Conduct a comprehensive analysis to identify actionable insights. Explore individual feature relationships with the target variable, multi-dimensional interactions between features, and key patterns or segments. Use exploratory analysis, visualization, statistical validation, and synthesis to deliver data-driven recommendations.`
+
 export function ChatPanel({ datasetId }: ChatPanelProps) {
   const [input, setInput] = useState("")
   const hasInitializedRef = useRef(false)
   const [error, setError] = useState<string | null>(null)
+  const [showDeepDiveDialog, setShowDeepDiveDialog] = useState(false)
+  const [mode, setMode] = useState<"normal" | "deep-dive">("normal")
+  const [deepDivePrompt, setDeepDivePrompt] = useState(DEEP_DIVE_PROMPT)
 
   console.log("[v0] ChatPanel initialized with datasetId:", datasetId)
 
   const { messages, sendMessage, status } = useChat({
     transport: new DefaultChatTransport({
       api: `/api/chat/${datasetId}`,
+      body: {
+        mode,
+      },
     }),
     onError: (error) => {
       console.error("[v0] Chat error:", error)
@@ -34,6 +50,8 @@ export function ChatPanel({ datasetId }: ChatPanelProps) {
     },
     onFinish: (message) => {
       console.log("[v0] Chat finished:", message)
+      // Reset mode after completion
+      setMode("normal")
     },
   })
 
@@ -67,12 +85,52 @@ export function ChatPanel({ datasetId }: ChatPanelProps) {
     }
   }
 
+  const handleOpenDeepDiveDialog = () => {
+    // Reset prompt to default when opening dialog
+    setDeepDivePrompt(DEEP_DIVE_PROMPT)
+    setShowDeepDiveDialog(true)
+  }
+
+  const handleDeepDive = () => {
+    if (status === "streaming" || status === "submitted") return
+
+    // Validate prompt is not empty
+    if (!deepDivePrompt.trim()) {
+      setError("Please enter an analysis prompt")
+      return
+    }
+
+    console.log("[v0] Starting deep dive analysis with custom prompt:", deepDivePrompt.substring(0, 50) + "...")
+    try {
+      setError(null)
+      setMode("deep-dive")
+      setShowDeepDiveDialog(false)
+      sendMessage({ text: deepDivePrompt })
+    } catch (err) {
+      console.error("[v0] Error starting deep dive:", err)
+      setError(err instanceof Error ? err.message : "Failed to start deep dive")
+      setMode("normal")
+    }
+  }
+
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
-      <div className="border-b bg-background p-4">
-        <h2 className="text-lg font-semibold">Chat</h2>
-        <p className="text-sm text-muted-foreground">Ask questions about your data</p>
+      <div className="border-b bg-background p-4 flex items-start justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">Chat</h2>
+          <p className="text-sm text-muted-foreground">Ask questions about your data</p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleOpenDeepDiveDialog}
+          disabled={status === "streaming" || status === "submitted"}
+          className="gap-2"
+        >
+          <Sparkles className="h-4 w-4" />
+          Deep Dive
+        </Button>
       </div>
 
       {/* Messages */}
@@ -192,6 +250,52 @@ export function ChatPanel({ datasetId }: ChatPanelProps) {
           </Button>
         </form>
       </div>
+
+      {/* Deep Dive Dialog */}
+      <Dialog open={showDeepDiveDialog} onOpenChange={setShowDeepDiveDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5" />
+              Start Deep Dive Analysis
+            </DialogTitle>
+            <DialogDescription>
+              This will run an in-depth exploration of your dataset using up to 30 analysis steps.
+              The analysis may take 2-3 minutes to complete.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4">
+            <p className="text-sm font-medium mb-2">Analysis Prompt:</p>
+            <Textarea
+              value={deepDivePrompt}
+              onChange={(e) => setDeepDivePrompt(e.target.value)}
+              className="min-h-[120px] resize-y font-mono text-sm"
+              placeholder="Enter your analysis prompt..."
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              {deepDivePrompt.length} characters • Customize the prompt to focus on specific aspects
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowDeepDiveDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDeepDive}
+              disabled={status === "streaming" || status === "submitted"}
+              className="gap-2"
+            >
+              <Sparkles className="h-4 w-4" />
+              Start Deep Dive
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

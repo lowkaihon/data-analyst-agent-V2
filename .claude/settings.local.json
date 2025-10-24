@@ -9,7 +9,8 @@
       "Bash(pnpm add:*)",
       "Bash(pnpm build:*)",
       "Bash(pnpm list:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(pnpm dlx:*)"
     ],
     "deny": [],
     "ask": []

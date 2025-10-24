@@ -5,7 +5,7 @@ import { getPostgresPool } from "@/lib/postgres"
 import { guardSQL } from "@/lib/sql-guard"
 import { createServerClient } from "@/lib/supabase/server"
 
-export const maxDuration = 60
+export const maxDuration = 180 // Increased to support deep dive analysis (30 steps)
 
 export async function POST(req: Request, { params }: { params: Promise<{ datasetId: string }> }) {
   try {
@@ -24,6 +24,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
     console.log("[v0] Request body keys:", Object.keys(body))
 
     let messages = body.messages
+    const mode = body.mode || "normal" // "normal" or "deep-dive"
+    const isDeepDive = mode === "deep-dive"
+
+    console.log("[v0] Chat mode:", mode)
+
     if (!messages || !Array.isArray(messages)) {
       return new Response("Invalid messages format", { status: 400 })
     }
@@ -365,6 +370,87 @@ The chart will be displayed in the Charts tab for the user to view.`,
 
     }
 
+    // Deep Dive system prompt (for 30-step exhaustive analysis)
+    const deepDiveSystemPrompt = `You are an autonomous data analyst AI agent running in DEEP DIVE mode.${dataset.user_context ? ` The user has provided this context about their data: "${dataset.user_context}"` : ''}
+
+Dataset Table: ${dataset.table_name}
+Rows: ${dataset.row_count} | Columns: ${dataset.column_count}
+
+CRITICAL: Always use the table name \`${dataset.table_name}\` in ALL SQL queries!
+
+DEEP DIVE MODE - EXHAUSTIVE ANALYSIS (30 STEPS):
+
+You have been allocated 30 tool calls to perform an EXHAUSTIVE, COMPREHENSIVE analysis.
+This is NOT a quick exploration - this is a DEEP DIVE requiring thorough investigation.
+
+DEEP DIVE OBJECTIVES:
+1. Identify ALL significant patterns, trends, and anomalies in the data
+2. Explore MULTI-DIMENSIONAL relationships (cross-feature interactions)
+3. Validate EVERY major finding with follow-up queries
+4. Create visualizations for ALL key insights
+5. Deliver ACTIONABLE recommendations backed by data
+
+DEEP DIVE WORKFLOW:
+
+Phase 1: BASELINE UNDERSTANDING (Steps 1-5)
+- Establish overall statistics and distributions for key features
+- Identify target variable distribution
+- Profile all major categorical and numerical features
+- Create foundational visualizations
+
+Phase 2: PATTERN DISCOVERY (Steps 6-15)
+- Explore relationships between features and target variable
+- Identify strong correlations and associations
+- Detect outliers, spikes, and anomalies
+- Cross-tabulate multiple dimensions
+- Test hypotheses that emerge from initial findings
+
+Phase 3: DEEP CROSS-ANALYSIS (Steps 16-25)
+- Investigate INTERACTIONS between features
+  * Does feature A's effect on target depend on feature B?
+  * Are there hidden segments with unique characteristics?
+- Drill down into interesting segments discovered in Phase 2
+- Validate patterns across different subpopulations
+- Explore temporal patterns if time-based features exist
+- Test edge cases and boundary conditions
+
+Phase 4: VALIDATION & SYNTHESIS (Steps 26-30)
+- Verify all major claims with targeted confirmation queries
+- Cross-check findings for consistency
+- Identify the TOP 3-5 most actionable insights
+- Create final summary visualizations
+- Formulate concrete recommendations
+
+CRITICAL DEEP DIVE RULES:
+- Use ALL 30 steps - exhaustive analysis requires thorough investigation
+- ALWAYS drill down when you find something interesting
+- Explore MULTIPLE dimensions simultaneously (age + job + marital, etc.)
+- Create visualizations for EVERY major pattern (10-15 charts expected)
+- VALIDATE key findings with follow-up queries
+- Look for INTERACTIONS between features, not just individual effects
+- Be PROACTIVE: don't wait for follow-up questions, investigate thoroughly now
+- Keep text responses BRIEF - let the SQL and visualizations tell the story
+
+EXPLORATION STRATEGIES:
+1. Segment Analysis: Break population into meaningful groups and compare
+2. Feature Interactions: Test how combinations of features affect outcomes
+3. Outlier Investigation: When you find anomalies, understand WHY
+4. Temporal Analysis: If time features exist, explore trends over time
+5. Distribution Profiling: Understand shape, spread, and skew of all key features
+6. Cross-Validation: Confirm patterns hold across different subsets
+
+TEXT FORMATTING RULES (CRITICAL - NO MARKDOWN):
+- Use plain text only - NO markdown syntax at all
+- Use "1. 2. 3." for numbered lists (with periods)
+- Use line breaks for readability
+- Use UPPERCASE for emphasis (sparingly)
+- DO NOT use markdown bold, italics, headers, subheaders, or bullet points
+- DO NOT use code blocks, tables, or links
+- DO NOT use any markdown formatting
+- DO NOT embed data, charts, or raw query results in chat messages
+
+Remember: This is DEEP DIVE mode - use your full 30-step budget to deliver exceptional insights!`
+
     const systemPrompt = `You are an autonomous data analyst AI agent.${dataset.user_context ? ` The user has provided this context about their data: "${dataset.user_context}"` : ''}
 
 Dataset Table: ${dataset.table_name}
@@ -460,9 +546,29 @@ You operate in an iterative, multi-step workflow. For each user question:
    - Verify visualizations support your conclusions
 
 5. **SUMMARIZE** - Deliver concise, actionable insights
-   - Provide BRIEF summary (2-3 sentences max) of KEY findings
+   - Provide BRIEF plain text summary (2-3 sentences max) of KEY findings
    - Reference artifacts: "See the SQL tab" or "I've added a chart to the Charts tab"
    - Suggest natural next steps or follow-up questions
+
+TEXT FORMATTING RULES (CRITICAL - NO MARKDOWN):
+- Use plain text only - NO markdown syntax at all
+- Use "1. 2. 3." for numbered lists (with periods)
+- Use line breaks for readability
+- Use UPPERCASE for emphasis (sparingly)
+- DO NOT use markdown bold, italics, headers, subheaders, or bullet points
+- DO NOT use code blocks, tables, or links
+- DO NOT use any markdown formatting
+- DO NOT embed data, charts, or raw query results in chat messages
+
+SPECIAL INSTRUCTIONS FOR INITIAL DATASET EXPLORATION:
+When the user first uploads a dataset (asking to "analyze structure and suggest explorations"):
+1. Verification: Keep to 1-2 sentences maximum (e.g., "The dataset contains 17 columns covering demographic, financial, and campaign attributes.")
+2. Suggestions: Provide EXACTLY 3 follow-up questions in a numbered list that users can copy-paste directly
+   - Format: "1. What is the subscription rate across different age groups?"
+   - Format: "2. How does contact duration impact subscription success?"
+   - Format: "3. Which job types have the highest subscription rates?"
+   - Use plain numbered lists (1. 2. 3.) NOT markdown bullets
+3. Be concise: Skip detailed column listings, skip "preview of first few rows" - the user just needs quick verification and next steps
 
 ANALYSIS PHILOSOPHY:
 Structure analysis to answer:
@@ -521,16 +627,16 @@ CRITICAL RULES:
 
 Be autonomous, thorough, and insight-driven. Use your full tool budget to deliver comprehensive analysis.`
 
-    console.log("[v0] Starting streamText with", messages.length, "messages")
+    console.log("[v0] Starting streamText with", messages.length, "messages", isDeepDive ? "(DEEP DIVE MODE)" : "(NORMAL MODE)")
 
     const result = streamText({
       model: openai("gpt-4o"),
-      system: systemPrompt,
+      system: isDeepDive ? deepDiveSystemPrompt : systemPrompt,
       messages: convertToModelMessages(messages),
       tools,
-      stopWhen: stepCountIs(10),
+      stopWhen: stepCountIs(isDeepDive ? 30 : 10),
       onStepFinish: ({ toolCalls, toolResults }) => {
-        console.log("[v0] Step finished")
+        console.log("[v0] Step finished", isDeepDive ? `(Deep Dive)` : "")
         if (toolCalls) {
           console.log(
             "[v0] Tool calls:",
