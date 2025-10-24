@@ -10,7 +10,8 @@
       "Bash(pnpm build:*)",
       "Bash(pnpm list:*)",
       "Bash(grep:*)",
-      "Bash(pnpm dlx:*)"
+      "Bash(pnpm dlx:*)",
+      "WebFetch(domain:ai-sdk.dev)"
     ],
     "deny": [],
     "ask": []

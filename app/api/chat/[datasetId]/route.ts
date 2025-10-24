@@ -78,7 +78,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
         description: `Execute a SELECT query against the dataset table to explore data and uncover insights.
 
 IMPORTANT GUIDELINES:
-- Use LIMIT clauses (typically 100 or less) to avoid large result sets
+- Use LIMIT clauses (typically 1500 or less) to avoid large result sets
 - Write efficient queries that answer specific analytical questions
 - Use aggregate functions (COUNT, SUM, AVG, MAX, MIN) strategically
 - Leverage GROUP BY for segmentation and comparison analysis
@@ -104,7 +104,7 @@ Results will be stored in the SQL tab for the user to review.`,
 
           try {
             // Guard SQL to ensure it's SELECT-only and add LIMIT
-            const guardedSQL = guardSQL(query, dataset.table_name)
+            const guardedSQL = guardSQL(query, dataset.table_name, 1500)
             const result = await pool.query(guardedSQL)
             const durationMs = Date.now() - startTime
 
@@ -167,20 +167,101 @@ Results will be stored in the SQL tab for the user to review.`,
 
 IMPORTANT: Use the queryId returned from executeSQLQuery - don't manually copy data!
 
-WHEN TO USE WHICH CHART TYPE:
-- bar: Compare categories, show distributions, rank items
-- line: Show trends over time, display continuous changes
-- scatter: Explore relationships between two variables, identify correlations
-- area: Show cumulative values, emphasize magnitude of change over time
-- pie: Display proportions (use sparingly, bars often better)
+CHART TYPE SELECTION GUIDE:
 
-STYLING GUIDELINES:
-- Professional color scheme with proper contrast
-- Clear axis labels with readable font sizes
-- Interactive tooltips for data exploration
-- Proper number formatting (integers: ",.0f", decimals: ",.2f", percentages: ".1%")
-- Appropriate dimensions (width: 500-600, height: 300-400)
-- Clean spacing and padding
+1. BAR CHART - Use for categorical comparisons and rankings
+   ✓ Good for: Top 10 items, category distributions, rankings
+   ✓ Example: "SELECT job, COUNT(*) FROM table GROUP BY job ORDER BY COUNT(*) DESC LIMIT 10"
+   ✓ X-axis: Category field (job, age_group, etc.)
+   ✓ Y-axis: Metric (count, avg, sum)
+   ✗ Avoid: When you have 50+ categories (too crowded)
+
+2. LINE CHART - Use for ordered continuous data and trends
+   ✓ Good for: Time series, duration analysis, sequential/ordered data
+   ✓ Example: "SELECT duration, AVG(rate) FROM table GROUP BY duration ORDER BY duration"
+   ✓ X-axis: Ordered field (date, duration, age, sequence)
+   ✓ Y-axis: Metric
+   ✓ CRITICAL: Use line for any GROUP BY field that represents a sequence/order (duration, age, time)
+   ✗ Avoid: Unordered categories (job types, countries)
+
+3. SCATTER PLOT - Use for correlation analysis between TWO quantitative variables
+   ✓ Good for: "SELECT balance, age FROM table" (both are measurements)
+   ✓ X-axis: First quantitative measure
+   ✓ Y-axis: Second quantitative measure
+   ✗ Avoid: Aggregated sequential data (use line instead)
+   ✗ Avoid: More than 500 points without aggregation
+
+4. AREA CHART - Use for cumulative trends
+   ✓ Good for: Running totals, cumulative distributions over time
+   ✓ Similar to line but emphasizes magnitude
+   ✗ Avoid: When not showing cumulative/stacked data
+
+5. PIE CHART - Use sparingly for proportions
+   ✓ Good for: 3-5 categories showing percentage breakdown
+   ✗ Avoid: More than 6 categories, precise comparisons (use bar instead)
+
+HANDLING MULTI-DIMENSIONAL DATA:
+
+If query has multiple GROUP BY fields (e.g., age + job):
+- Query: "SELECT age, job, rate FROM table GROUP BY age, job"
+- Option 1: Create composite labels
+  * xField: Create a label like "age-job" or use most important dimension
+  * title: Clearly indicate you're showing combinations
+  * Example: xField="age", but acknowledge job dimension in title
+- Option 2: Focus on primary dimension
+  * If you have age, job, and rate, choose the dimension with fewer unique values
+  * Use clear title: "Subscription Rate by Age-Job Combination"
+
+DATA PREPARATION CONSIDERATIONS:
+
+1. High-cardinality ordered data (e.g., 1000+ duration values):
+   → Use LINE chart, not scatter
+   → X-axis: The ordered field (duration, age, etc.)
+   → Creates a trend line automatically
+
+2. Top-N queries with ORDER BY:
+   → Use BAR chart
+   → Ensure bars are sorted by the metric (looks better)
+
+3. Percentage data:
+   → Set axis format to show percentages appropriately
+   → Use clear labels: "Subscription Rate (%)"
+
+4. Multiple metrics in result:
+   → Choose the most important metric for visualization
+   → Mention other metrics in title if relevant
+
+FIELD SELECTION BEST PRACTICES:
+
+1. For queries with GROUP BY [ordered_field]:
+   → xField = the GROUP BY field
+   → yField = the aggregated metric (COUNT, AVG, SUM)
+   → chartType = "line" if field is ordered (duration, age, date)
+   → chartType = "bar" if field is categorical (job, marital)
+
+2. For ranking queries (ORDER BY metric DESC LIMIT N):
+   → xField = the category field
+   → yField = the metric being ranked
+   → chartType = "bar"
+
+3. For correlation queries (two measures):
+   → xField = first measure
+   → yField = second measure
+   → chartType = "scatter"
+
+AXIS LABELS AND FORMATTING:
+
+- Always provide clear, descriptive axis labels
+- For subscription_rate or similar percentages: yAxisLabel = "Subscription Rate (%)"
+- For counts: yAxisLabel = "Number of Customers" (not just "count")
+- For composite data: Use descriptive titles like "Top Age-Job Combinations by Subscription Rate"
+
+QUALITY CHECKLIST:
+✓ Does the chart type match the data structure? (ordered → line, categorical → bar)
+✓ Are axis labels clear and descriptive?
+✓ Is the title informative about what insight the chart shows?
+✓ For multi-dimensional data, is it clear what's being compared?
+✓ Would a user immediately understand the pattern/insight?
 
 The chart will be displayed in the Charts tab for the user to view.`,
         inputSchema: z.object({
@@ -422,23 +503,77 @@ Phase 4: VALIDATION & SYNTHESIS (Steps 26-30)
 - Formulate concrete recommendations
 
 CRITICAL DEEP DIVE RULES:
-- Use ALL 30 steps - exhaustive analysis requires thorough investigation
-- ALWAYS drill down when you find something interesting
-- Explore MULTIPLE dimensions simultaneously (age + job + marital, etc.)
-- Create visualizations for EVERY major pattern (10-15 charts expected)
-- VALIDATE key findings with follow-up queries
+- Use ALL 30 steps - NEVER stop before completing at least 25 steps
+- After each finding, ask yourself "What else?" and continue exploring
+- REQUIRED: Explore at least 5 multi-dimensional interactions (age×job, education×marital, etc.)
+- Visualize selectively based on insight value (8-12 charts expected, not every query)
+- VALIDATE key findings with follow-up queries (mandatory, not optional)
 - Look for INTERACTIONS between features, not just individual effects
 - Be PROACTIVE: don't wait for follow-up questions, investigate thoroughly now
 - Keep text responses BRIEF - let the SQL and visualizations tell the story
 - END with follow-up suggestions: "You might also explore:" + 2-3 numbered questions
 
+PROGRESS CHECKPOINTS:
+- After Step 10: You should have baseline stats + identified 3-5 interesting patterns
+- After Step 20: You should have explored interactions and drilled down on top findings
+- After Step 25: You should be validating claims and synthesizing final insights
+- If you stop before step 25, you have NOT completed a deep dive
+
+VISUALIZATION JUDGMENT (CRITICAL):
+
+WHEN TO VISUALIZE:
+✓ Aggregate queries showing distributions, trends, or rankings with 5+ data points
+✓ Comparisons between categories where visual pattern is clearer than numbers
+✓ Multi-dimensional data that benefits from visual representation
+✓ Correlation or relationship queries between two variables
+✓ Any query where a chart significantly clarifies the insight
+
+WHEN TO SKIP VISUALIZATION:
+✗ Validation queries (confirming a specific number or claim)
+✗ Simple counts or single aggregate values
+✗ Exploration queries with < 3 rows of results
+✗ Drill-down queries just confirming what you already visualized
+✗ Schema profiling or data quality checks
+
+DECISION FRAMEWORK:
+Ask yourself: "Would a chart help the user understand this finding better than numbers alone?"
+If yes → create visualization. If no → skip and continue analysis.
+Aim for 8-12 high-quality visualizations, not 30 redundant charts.
+
+MANDATORY DRILL-DOWN PATTERNS:
+
+→ When you see a SPIKE or OUTLIER:
+  Example: "Age 18-25 has 58% rate (much higher than others)"
+  Action: Query that specific segment to understand WHY (cross-tabulate with other features)
+
+→ When one SEGMENT STANDS OUT:
+  Example: "Students have 28.7% rate vs 11% overall"
+  Action: Break down further - analyze student subgroups by age, marital, education
+
+→ When exploring ONE DIMENSION:
+  Example: Analyzed job distribution
+  Action: Also explore age, education, marital (multi-dimensional view required)
+
+→ When you find a PATTERN:
+  Example: "Balance seems related to subscription"
+  Action: Cross-analyze - does this hold across age groups? job types? Test interaction effects
+
+→ When making a HYPOTHESIS:
+  Example: "Maybe contact duration matters"
+  Action: Test it - query duration vs outcome, then test if effect varies by demographic
+
+FOLLOW THE "WHY?" CHAIN:
+- Initial finding → Ask "Why is this happening?" → Query deeper
+- Keep asking "What else affects this?" until pattern is clear
+- Use 3-5 follow-up queries per major finding
+
 EXPLORATION STRATEGIES:
 1. Segment Analysis: Break population into meaningful groups and compare
-2. Feature Interactions: Test how combinations of features affect outcomes
-3. Outlier Investigation: When you find anomalies, understand WHY
+2. Feature Interactions: Test how combinations of features affect outcomes (REQUIRED: minimum 5 interactions)
+3. Outlier Investigation: When you find anomalies, understand WHY with drill-down queries
 4. Temporal Analysis: If time features exist, explore trends over time
 5. Distribution Profiling: Understand shape, spread, and skew of all key features
-6. Cross-Validation: Confirm patterns hold across different subsets
+6. Cross-Validation: Confirm patterns hold across different subsets (mandatory validation phase)
 
 TEXT FORMATTING RULES (CRITICAL - NO MARKDOWN):
 - Use plain text only - NO markdown syntax at all
@@ -572,8 +707,8 @@ When the user first uploads a dataset (asking to "analyze structure and suggest 
 2. Suggestions: Provide the introduction "Here are some analytical questions to explore:" followed by EXACTLY 3 follow-up questions in a numbered list that users can copy-paste directly
    - Format: "Here are some analytical questions to explore:"
    - Format: "1. What is the subscription rate across different age groups?"
-   - Format: "2. How does contact duration impact subscription success?"
-   - Format: "3. Which job types have the highest subscription rates?"
+   - Format: "2. Which job types have the highest subscription rates?"
+   - Format: "3. How does time since the last contact (pdays) affect subscription rates?"
    - Use plain numbered lists (1. 2. 3.) NOT markdown bullets
 3. Be concise: Skip detailed column listings, skip "preview of first few rows" - the user just needs quick verification and next steps
 
@@ -637,7 +772,7 @@ Be autonomous, thorough, and insight-driven. Use your full tool budget to delive
     console.log("[v0] Starting streamText with", messages.length, "messages", isDeepDive ? "(DEEP DIVE MODE)" : "(NORMAL MODE)")
 
     const result = streamText({
-      model: openai("gpt-4o"),
+      model: openai("gpt-5"),
       system: isDeepDive ? deepDiveSystemPrompt : systemPrompt,
       messages: convertToModelMessages(messages),
       tools,

@@ -15,6 +15,9 @@ function AnalyzeContent() {
   const [reportContent, setReportContent] = useState<{ title: string; markdown: string } | null>(null)
   const [isGeneratingReport, setIsGeneratingReport] = useState(false)
 
+  // Chart refresh trigger - increments when AI streaming ends
+  const [chartRefreshTrigger, setChartRefreshTrigger] = useState(0)
+
   useEffect(() => {
     if (datasetId) {
       setCurrentDataset(datasetId)
@@ -50,6 +53,12 @@ function AnalyzeContent() {
     }
   }
 
+  // Handle AI stream end - trigger chart refresh
+  const handleStreamEnd = () => {
+    console.log("[v0] AI stream ended, triggering chart refresh")
+    setChartRefreshTrigger((prev) => prev + 1)
+  }
+
   if (!datasetId) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -66,6 +75,7 @@ function AnalyzeContent() {
             datasetId={datasetId}
             onGenerateReport={handleGenerateReport}
             isGeneratingReport={isGeneratingReport}
+            onStreamEnd={handleStreamEnd}
           />
         </ResizablePanel>
         <ResizableHandle withHandle />
@@ -75,6 +85,7 @@ function AnalyzeContent() {
             reportContent={reportContent}
             onGenerateReport={handleGenerateReport}
             isGeneratingReport={isGeneratingReport}
+            chartRefreshTrigger={chartRefreshTrigger}
           />
         </ResizablePanel>
       </ResizablePanelGroup>

@@ -15,9 +15,10 @@ interface DatasetTabsProps {
   reportContent?: { title: string; markdown: string } | null
   onGenerateReport?: () => void
   isGeneratingReport?: boolean
+  chartRefreshTrigger?: number
 }
 
-export function DatasetTabs({ datasetId, reportContent, onGenerateReport, isGeneratingReport }: DatasetTabsProps) {
+export function DatasetTabs({ datasetId, reportContent, onGenerateReport, isGeneratingReport, chartRefreshTrigger }: DatasetTabsProps) {
   const [activeTab, setActiveTab] = useState("preview")
 
   return (
@@ -64,7 +65,7 @@ export function DatasetTabs({ datasetId, reportContent, onGenerateReport, isGene
             <SQLTab datasetId={datasetId} />
           </TabsContent>
           <TabsContent value="charts" className="h-full m-0">
-            <ChartsTab datasetId={datasetId} />
+            <ChartsTab datasetId={datasetId} refreshTrigger={chartRefreshTrigger} />
           </TabsContent>
           <TabsContent value="report" className="h-full m-0">
             <ReportTab

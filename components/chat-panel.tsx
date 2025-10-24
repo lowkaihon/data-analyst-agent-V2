@@ -26,27 +26,25 @@ interface ChatPanelProps {
   datasetId: string
   onGenerateReport?: () => void
   isGeneratingReport?: boolean
+  onStreamEnd?: () => void
 }
 
 const DEEP_DIVE_PROMPT = `Conduct a comprehensive analysis to identify actionable insights. Explore individual feature relationships with the target variable, multi-dimensional interactions between features, and key patterns or segments. Use exploratory analysis, visualization, statistical validation, and synthesis to deliver data-driven recommendations.`
 
-export function ChatPanel({ datasetId, onGenerateReport, isGeneratingReport }: ChatPanelProps) {
+export function ChatPanel({ datasetId, onGenerateReport, isGeneratingReport, onStreamEnd }: ChatPanelProps) {
   const [input, setInput] = useState("")
   const hasInitializedRef = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const [showDeepDiveDialog, setShowDeepDiveDialog] = useState(false)
-  const [mode, setMode] = useState<"normal" | "deep-dive">("normal")
   const [deepDivePrompt, setDeepDivePrompt] = useState(DEEP_DIVE_PROMPT)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const prevStatusRef = useRef<string>("ready")
 
   console.log("[v0] ChatPanel initialized with datasetId:", datasetId)
 
   const { messages, sendMessage, status } = useChat({
     transport: new DefaultChatTransport({
       api: `/api/chat/${datasetId}`,
-      body: {
-        mode,
-      },
     }),
     onError: (error) => {
       console.error("[v0] Chat error:", error)
@@ -64,7 +62,7 @@ export function ChatPanel({ datasetId, onGenerateReport, isGeneratingReport }: C
       console.log("[v0] Sending initial greeting message")
       hasInitializedRef.current = true
       try {
-        sendMessage({ text: "__INIT__" })
+        sendMessage({ text: "__INIT__" }, { body: { mode: "normal" } })
       } catch (err) {
         console.error("[v0] Error sending init message:", err)
         setError(err instanceof Error ? err.message : "Failed to send initial message")
@@ -77,6 +75,15 @@ export function ChatPanel({ datasetId, onGenerateReport, isGeneratingReport }: C
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages, status])
 
+  // Detect when streaming ends and trigger chart refresh
+  useEffect(() => {
+    if (prevStatusRef.current === "streaming" && status === "ready") {
+      console.log("[v0] Stream ended, notifying parent component")
+      onStreamEnd?.()
+    }
+    prevStatusRef.current = status
+  }, [status, onStreamEnd])
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim() || status === "streaming" || status === "submitted") return
@@ -84,7 +91,7 @@ export function ChatPanel({ datasetId, onGenerateReport, isGeneratingReport }: C
     console.log("[v0] Sending message:", input, "with datasetId:", datasetId)
     try {
       setError(null)
-      sendMessage({ text: input })
+      sendMessage({ text: input }, { body: { mode: "normal" } })
       setInput("")
     } catch (err) {
       console.error("[v0] Error sending message:", err)
@@ -107,16 +114,15 @@ export function ChatPanel({ datasetId, onGenerateReport, isGeneratingReport }: C
       return
     }
 
-    console.log("[v0] Starting deep dive analysis with custom prompt:", deepDivePrompt.substring(0, 50) + "...")
+    console.log("[v0] Starting deep dive analysis with mode=deep-dive")
     try {
       setError(null)
-      setMode("deep-dive")
       setShowDeepDiveDialog(false)
-      sendMessage({ text: deepDivePrompt })
+      // Pass mode in sendMessage options (correct AI SDK pattern)
+      sendMessage({ text: deepDivePrompt }, { body: { mode: "deep-dive" } })
     } catch (err) {
       console.error("[v0] Error starting deep dive:", err)
       setError(err instanceof Error ? err.message : "Failed to start deep dive")
-      setMode("normal")
     }
   }
 

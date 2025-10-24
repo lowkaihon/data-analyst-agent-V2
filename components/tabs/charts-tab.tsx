@@ -10,9 +10,10 @@ import { VegaLiteChart } from "@/components/vega-lite-chart"
 
 interface ChartsTabProps {
   datasetId: string
+  refreshTrigger?: number
 }
 
-export function ChartsTab({ datasetId }: ChartsTabProps) {
+export function ChartsTab({ datasetId, refreshTrigger }: ChartsTabProps) {
   const [charts, setCharts] = useState<Run[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -20,6 +21,8 @@ export function ChartsTab({ datasetId }: ChartsTabProps) {
   useEffect(() => {
     async function fetchCharts() {
       try {
+        setLoading(true)
+        setError(null)
         const response = await fetch(`/api/runs?datasetId=${datasetId}&type=chart`)
         const result = await response.json()
 
@@ -36,7 +39,7 @@ export function ChartsTab({ datasetId }: ChartsTabProps) {
     }
 
     fetchCharts()
-  }, [datasetId])
+  }, [datasetId, refreshTrigger])
 
   const handleTogglePin = async (runId: string, currentPinned: boolean) => {
     try {
