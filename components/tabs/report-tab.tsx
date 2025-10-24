@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
@@ -11,38 +11,25 @@ import remarkGfm from "remark-gfm"
 
 interface ReportTabProps {
   datasetId: string
+  reportContent?: { title: string; markdown: string } | null
+  onGenerateReport?: () => void
+  isGeneratingReport?: boolean
 }
 
-export function ReportTab({ datasetId }: ReportTabProps) {
+export function ReportTab({ datasetId, reportContent, onGenerateReport, isGeneratingReport }: ReportTabProps) {
   const [title, setTitle] = useState("Data Analysis Report")
   const [markdown, setMarkdown] = useState("")
-  const [generating, setGenerating] = useState(false)
   const [viewMode, setViewMode] = useState<"preview" | "edit">("preview")
 
-  const handleGenerateReport = async () => {
-    setGenerating(true)
-    try {
-      const response = await fetch("/api/report/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ datasetId }),
-      })
-
-      const result = await response.json()
-
-      if (!response.ok) {
-        throw new Error(result.error || "Failed to generate report")
-      }
-
-      setTitle(result.title)
-      setMarkdown(result.markdown)
+  // Sync with incoming report content from props
+  useEffect(() => {
+    if (reportContent) {
+      setTitle(reportContent.title)
+      setMarkdown(reportContent.markdown)
       setViewMode("preview") // Switch to preview after generation
-    } catch (err) {
-      console.error("Failed to generate report:", err)
-    } finally {
-      setGenerating(false)
     }
-  }
+  }, [reportContent])
+
 
   const handleDownload = () => {
     const blob = new Blob([markdown], { type: "text/markdown" })
@@ -88,8 +75,8 @@ export function ReportTab({ datasetId }: ReportTabProps) {
           )}
 
           {/* Generate Report Button */}
-          <Button onClick={handleGenerateReport} size="sm" variant="outline" className="gap-2" disabled={generating}>
-            {generating ? (
+          <Button onClick={onGenerateReport} size="sm" variant="outline" className="gap-2" disabled={isGeneratingReport}>
+            {isGeneratingReport ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Generating...

@@ -5,8 +5,9 @@ import type React from "react"
 import { useState, useEffect, useRef } from "react"
 import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport } from "ai"
-import { Send, Loader2, Sparkles } from "lucide-react"
+import { Send, Loader2, Sparkles, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Card } from "@/components/ui/card"
 import { Message, MessageContent, MessageAvatar } from "@/components/ai-elements/message"
@@ -23,17 +24,20 @@ import type { ToolUIPart } from "ai"
 
 interface ChatPanelProps {
   datasetId: string
+  onGenerateReport?: () => void
+  isGeneratingReport?: boolean
 }
 
 const DEEP_DIVE_PROMPT = `Conduct a comprehensive analysis to identify actionable insights. Explore individual feature relationships with the target variable, multi-dimensional interactions between features, and key patterns or segments. Use exploratory analysis, visualization, statistical validation, and synthesis to deliver data-driven recommendations.`
 
-export function ChatPanel({ datasetId }: ChatPanelProps) {
+export function ChatPanel({ datasetId, onGenerateReport, isGeneratingReport }: ChatPanelProps) {
   const [input, setInput] = useState("")
   const hasInitializedRef = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const [showDeepDiveDialog, setShowDeepDiveDialog] = useState(false)
   const [mode, setMode] = useState<"normal" | "deep-dive">("normal")
   const [deepDivePrompt, setDeepDivePrompt] = useState(DEEP_DIVE_PROMPT)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
 
   console.log("[v0] ChatPanel initialized with datasetId:", datasetId)
 
@@ -50,8 +54,6 @@ export function ChatPanel({ datasetId }: ChatPanelProps) {
     },
     onFinish: (message) => {
       console.log("[v0] Chat finished:", message)
-      // Reset mode after completion
-      setMode("normal")
     },
   })
 
@@ -69,6 +71,11 @@ export function ChatPanel({ datasetId }: ChatPanelProps) {
       }
     }
   }, [status, messages.length, sendMessage])
+
+  // Auto-scroll to bottom when messages change or streaming status updates
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [messages, status])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -155,11 +162,7 @@ export function ChatPanel({ datasetId }: ChatPanelProps) {
               message.role === "user" && message.parts.some((p) => p.type === "text" && p.text === "__INIT__")
             if (isInitMessage) return null
 
-            // Extract text parts
-            const textParts = message.parts.filter((p) => p.type === "text")
-            const textContent = textParts.map((p) => p.type === "text" ? p.text : "").join("")
-
-            // Extract tool call parts
+            // Count tool calls for summary
             const toolParts = message.parts.filter((p) => p.type?.startsWith("tool-")) as ToolUIPart[]
 
             return (
@@ -172,41 +175,57 @@ export function ChatPanel({ datasetId }: ChatPanelProps) {
                 )}
 
                 <MessageContent variant="flat">
-                  {/* Render text content */}
-                  {textContent && (
-                    <div className="whitespace-pre-wrap text-sm">
-                      {textContent}
+                  {/* Show tool summary if many tools */}
+                  {toolParts.length > 3 && (
+                    <div className="text-xs text-muted-foreground border-l-2 border-muted pl-3 py-1 mb-2">
+                      Executed {toolParts.length} tool calls • Click any to expand
                     </div>
                   )}
 
-                  {/* Render tool calls */}
-                  {toolParts.map((part, i) => {
-                    // Determine tool state based on what data is available
-                    const toolState: ToolUIPart["state"] = part.errorText
-                      ? "output-error"
-                      : part.output !== undefined
-                        ? "output-available"
-                        : part.input !== undefined
-                          ? "input-available"
-                          : "input-streaming"
+                  {/* Render parts in chronological order to preserve streaming sequence */}
+                  {message.parts.map((part, partIndex) => {
+                    // Render text parts
+                    if (part.type === "text" && part.text) {
+                      return (
+                        <div key={partIndex} className="whitespace-pre-wrap text-sm">
+                          {part.text}
+                        </div>
+                      )
+                    }
 
-                    return (
-                      <Tool key={i} defaultOpen={false}>
-                        <ToolHeader type={part.type} state={toolState} />
-                        <ToolContent>
-                          {part.input ? <ToolInput input={part.input as any} /> : null}
-                          {(part.output || part.errorText) ? (
-                            <ToolOutput output={part.output as any} errorText={part.errorText} />
-                          ) : null}
-                          {toolState === "input-streaming" ? (
-                            <div className="p-4 text-muted-foreground text-sm">
-                              <Loader2 className="inline-block mr-2 h-4 w-4 animate-spin" />
-                              Executing tool...
-                            </div>
-                          ) : null}
-                        </ToolContent>
-                      </Tool>
-                    )
+                    // Render tool parts
+                    if (part.type?.startsWith("tool-")) {
+                      const toolPart = part as ToolUIPart
+
+                      // Determine tool state based on what data is available
+                      const toolState: ToolUIPart["state"] = toolPart.errorText
+                        ? "output-error"
+                        : toolPart.output !== undefined
+                          ? "output-available"
+                          : toolPart.input !== undefined
+                            ? "input-available"
+                            : "input-streaming"
+
+                      return (
+                        <Tool key={partIndex} defaultOpen={false}>
+                          <ToolHeader type={toolPart.type} state={toolState} />
+                          <ToolContent>
+                            {toolPart.input ? <ToolInput input={toolPart.input as any} /> : null}
+                            {(toolPart.output || toolPart.errorText) ? (
+                              <ToolOutput output={toolPart.output as any} errorText={toolPart.errorText} />
+                            ) : null}
+                            {toolState === "input-streaming" ? (
+                              <div className="p-4 text-muted-foreground text-sm">
+                                <Loader2 className="inline-block mr-2 h-4 w-4 animate-spin" />
+                                Executing tool...
+                              </div>
+                            ) : null}
+                          </ToolContent>
+                        </Tool>
+                      )
+                    }
+
+                    return null
                   })}
                 </MessageContent>
 
@@ -227,23 +246,42 @@ export function ChatPanel({ datasetId }: ChatPanelProps) {
               </Card>
             </div>
           )}
+
+          {/* Anchor element for auto-scroll */}
+          <div ref={messagesEndRef} />
         </div>
       </div>
 
-      {/* Input */}
-      <div className="border-t bg-background p-4">
+      {/* Input area */}
+      <div className="border-t p-4 space-y-2">
+        {/* Generate Report Button */}
+        <Button
+          onClick={onGenerateReport}
+          variant="outline"
+          className="w-full"
+          disabled={isGeneratingReport || messages.length === 0}
+        >
+          {isGeneratingReport ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Generating Report...
+            </>
+          ) : (
+            <>
+              <FileText className="mr-2 h-4 w-4" />
+              Generate Report
+            </>
+          )}
+        </Button>
+
+        {/* Input form */}
         <form onSubmit={handleSubmit} className="flex gap-2">
-          <Textarea
+          <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask a question..."
-            className="min-h-[60px] resize-none"
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault()
-                handleSubmit(e)
-              }
-            }}
+            placeholder="Ask a question about your data..."
+            disabled={status === "streaming" || status === "submitted"}
+            className="flex-1"
           />
           <Button type="submit" size="icon" disabled={!input.trim() || status === "streaming" || status === "submitted"}>
             <Send className="h-4 w-4" />

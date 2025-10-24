@@ -12,9 +12,12 @@ import { HistoryDrawer } from "@/components/history-drawer"
 
 interface DatasetTabsProps {
   datasetId: string
+  reportContent?: { title: string; markdown: string } | null
+  onGenerateReport?: () => void
+  isGeneratingReport?: boolean
 }
 
-export function DatasetTabs({ datasetId }: DatasetTabsProps) {
+export function DatasetTabs({ datasetId, reportContent, onGenerateReport, isGeneratingReport }: DatasetTabsProps) {
   const [activeTab, setActiveTab] = useState("preview")
 
   return (
@@ -64,7 +67,12 @@ export function DatasetTabs({ datasetId }: DatasetTabsProps) {
             <ChartsTab datasetId={datasetId} />
           </TabsContent>
           <TabsContent value="report" className="h-full m-0">
-            <ReportTab datasetId={datasetId} />
+            <ReportTab
+              datasetId={datasetId}
+              reportContent={reportContent}
+              onGenerateReport={onGenerateReport}
+              isGeneratingReport={isGeneratingReport}
+            />
           </TabsContent>
         </div>
       </Tabs>

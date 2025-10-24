@@ -350,30 +350,108 @@ npm run dev
 
 ## Project Structure
 
-\`\`\`
+```
 ├── app/
 │   ├── page.tsx                    # Upload interface (Stage 0)
-│   ├── analyze/page.tsx            # Split-view analysis (Stage 1)
+│   ├── layout.tsx                  # Root layout
+│   ├── globals.css                 # Global styles
+│   ├── analyze/
+│   │   ├── page.tsx                # Split-view analysis (Stage 1)
+│   │   └── loading.tsx             # Suspense boundary
 │   └── api/
-│       ├── chat/[datasetId]/       # AI chat with tools
-│       ├── ingest/                 # CSV upload and table creation
-│       ├── preview/                # Data preview endpoint
-│       ├── schema/                 # Schema metadata
-│       ├── runs/                   # Artifact management
-│       └── report/                 # Report generation
+│       ├── chat/[datasetId]/route.ts       # AI chat with tools
+│       ├── datasets/cleanup/route.ts       # Dataset deletion
+│       ├── ingest/route.ts                 # CSV upload and table creation
+│       ├── preview/route.ts                # Data preview endpoint
+│       ├── schema/route.ts                 # Schema metadata endpoint
+│       ├── sql/route.ts                    # SQL execution endpoint
+│       ├── runs/
+│       │   ├── route.ts                    # Artifact management
+│       │   └── [id]/pin/route.ts           # Pin/unpin artifacts
+│       └── report/generate/route.ts        # Report generation
 ├── components/
 │   ├── chat-panel.tsx              # Chat interface with AI SDK
 │   ├── dataset-tabs.tsx            # Tabbed dataset viewer
 │   ├── history-drawer.tsx          # Artifact search and filter
-│   └── tabs/                       # Individual tab components
+│   ├── theme-provider.tsx          # Theme context provider
+│   ├── vega-lite-chart.tsx         # Vega-Lite visualization wrapper
+│   ├── ai-elements/                # AI-powered UI components
+│   │   ├── actions.tsx             # Tool action buttons
+│   │   ├── artifact.tsx            # Artifact display
+│   │   ├── branch.tsx              # Message branching
+│   │   ├── chain-of-thought.tsx    # Reasoning display
+│   │   ├── code-block.tsx          # Code syntax highlighting
+│   │   ├── context.tsx             # Context display
+│   │   ├── conversation.tsx        # Conversation view
+│   │   ├── image.tsx               # Image rendering
+│   │   ├── inline-citation.tsx     # Inline citations
+│   │   ├── loader.tsx              # Loading states
+│   │   ├── message.tsx             # Message component
+│   │   ├── open-in-chat.tsx        # Open artifact in chat
+│   │   ├── prompt-input.tsx        # Chat input
+│   │   ├── reasoning.tsx           # AI reasoning display
+│   │   ├── response.tsx            # Response component
+│   │   ├── sources.tsx             # Source attribution
+│   │   ├── suggestion.tsx          # Suggestion chips
+│   │   ├── task.tsx                # Task display
+│   │   ├── tool.tsx                # Tool call display
+│   │   └── web-preview.tsx         # Web preview
+│   ├── tabs/
+│   │   ├── charts-tab.tsx          # Visualization gallery
+│   │   ├── preview-tab.tsx         # Data preview table
+│   │   ├── report-tab.tsx          # Report generation UI
+│   │   ├── schema-tab.tsx          # Schema browser
+│   │   └── sql-tab.tsx             # Query history
+│   └── ui/                         # shadcn/ui component library
+│       ├── avatar.tsx
+│       ├── badge.tsx
+│       ├── button.tsx
+│       ├── card.tsx
+│       ├── carousel.tsx
+│       ├── collapsible.tsx
+│       ├── dialog.tsx
+│       ├── dropdown-menu.tsx
+│       ├── hover-card.tsx
+│       ├── input.tsx
+│       ├── label.tsx
+│       ├── progress.tsx
+│       ├── resizable.tsx
+│       ├── scroll-area.tsx
+│       ├── select.tsx
+│       ├── sheet.tsx
+│       ├── table.tsx
+│       ├── tabs.tsx
+│       ├── textarea.tsx
+│       └── tooltip.tsx
 ├── lib/
-│   ├── supabase/                   # Supabase client utilities
 │   ├── postgres.ts                 # Direct Postgres connection
+│   ├── session-cleanup.ts          # Session management utilities
 │   ├── sql-guard.ts                # SQL safety validation
-│   └── types.ts                    # TypeScript definitions
-└── scripts/
-    └── *.sql                       # Database initialization
-\`\`\`
+│   ├── types.ts                    # TypeScript definitions
+│   ├── utils.ts                    # Utility functions
+│   └── supabase/
+│       ├── client.ts               # Supabase client (browser)
+│       └── server.ts               # Supabase client (server)
+├── scripts/
+│   ├── 000_reset_database.sql      # Database reset script
+│   ├── 001_create_schema.sql       # Schema creation
+│   └── 002_initialize_database.sql # Database initialization
+├── styles/
+│   └── globals.css                 # Global stylesheet
+├── public/
+│   ├── placeholder-logo.png
+│   ├── placeholder-logo.svg
+│   ├── placeholder-user.jpg
+│   ├── placeholder.jpg
+│   └── placeholder.svg
+├── components.json                 # shadcn/ui configuration
+├── next.config.mjs                 # Next.js configuration
+├── postcss.config.mjs              # PostCSS configuration
+├── tsconfig.json                   # TypeScript configuration
+├── package.json                    # Dependencies
+├── pnpm-lock.yaml                  # Lock file
+└── README.md                       # This file
+```
 
 ## Deployment
 
