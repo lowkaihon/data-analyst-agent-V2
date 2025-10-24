@@ -772,7 +772,7 @@ Be autonomous, thorough, and insight-driven. Use your full tool budget to delive
     console.log("[v0] Starting streamText with", messages.length, "messages", isDeepDive ? "(DEEP DIVE MODE)" : "(NORMAL MODE)")
 
     const result = streamText({
-      model: openai("gpt-5"),
+      model: openai("gpt-4o"),
       system: isDeepDive ? deepDiveSystemPrompt : systemPrompt,
       messages: convertToModelMessages(messages),
       tools,
