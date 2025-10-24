@@ -55,7 +55,28 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
 
     if (isInitMessage) {
       console.log("[v0] Detected init message, replacing with greeting prompt")
-      // Replace __INIT__ with a proper greeting prompt
+
+      // Fetch schema information to provide upfront (avoid 17 SQL queries)
+      const pool = getPostgresPool()
+      const columnsQuery = `
+        SELECT column_name, data_type
+        FROM information_schema.columns
+        WHERE table_name = $1 AND column_name != 'id'
+        ORDER BY ordinal_position
+      `
+      const columnsResult = await pool.query(columnsQuery, [dataset.table_name])
+
+      // Format column info concisely
+      const columnInfo = columnsResult.rows.map(col => {
+        const type = col.data_type === 'integer' || col.data_type === 'double precision' || col.data_type === 'numeric'
+          ? 'number'
+          : col.data_type === 'boolean' ? 'boolean' : 'text'
+        return `${col.column_name} (${type})`
+      }).join(', ')
+
+      // Replace __INIT__ with schema-enriched prompt
+      const schemaInfo = `Dataset: ${dataset.row_count} rows, ${dataset.column_count} columns: ${columnInfo}`
+
       messages = [
         {
           role: "user",
@@ -63,8 +84,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
             {
               type: "text",
               text: dataset.user_context
-                ? `I've uploaded a dataset with this context: "${dataset.user_context}". Please analyze the dataset structure and verify if it matches my description, then suggest what I should explore.`
-                : "I've uploaded a dataset. Please analyze its structure and suggest interesting questions or analyses I could explore.",
+                ? `${schemaInfo}\n\nUser context: "${dataset.user_context}"\n\nVerify if structure matches context (1 sentence), then suggest 3 analytical questions to explore.`
+                : `${schemaInfo}\n\nProvide a 1-sentence verification, then suggest 3 analytical questions I can explore.`,
             },
           ],
         },
@@ -75,26 +96,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
 
     const tools = {
       executeSQLQuery: tool({
-        description: `Execute a SELECT query against the dataset table to explore data and uncover insights.
-
-IMPORTANT GUIDELINES:
-- Use LIMIT clauses (typically 1500 or less) to avoid large result sets
-- Write efficient queries that answer specific analytical questions
-- Use aggregate functions (COUNT, SUM, AVG, MAX, MIN) strategically
-- Leverage GROUP BY for segmentation and comparison analysis
-- Use WHERE clauses to filter for relevant data
-- Build queries that reveal patterns, anomalies, or actionable insights
-
-QUERY EXAMPLES:
-- Distribution: "SELECT category, COUNT(*) as count FROM table GROUP BY category ORDER BY count DESC LIMIT 10"
-- Trends: "SELECT date_column, AVG(metric) as avg_value FROM table GROUP BY date_column ORDER BY date_column"
-- Segmentation: "SELECT segment, AVG(value) as avg, COUNT(*) as count FROM table GROUP BY segment"
-- Top performers: "SELECT name, metric FROM table ORDER BY metric DESC LIMIT 10"
-
-Results will be stored in the SQL tab for the user to review.`,
+        description: `Execute a SELECT query to explore data. Returns preview (5 rows) + queryId for visualization.`,
         inputSchema: z.object({
-          query: z.string().describe("The SQL SELECT query to execute. Must be a SELECT statement only."),
-          reasoning: z.string().describe("Brief explanation of what insight this query will reveal"),
+          query: z.string().describe("SELECT query ending with LIMIT clause (max 1500). Example: 'SELECT x FROM t GROUP BY x LIMIT 100'. Never include trailing semicolons."),
+          reasoning: z.string().describe("What insight this query reveals (1 sentence)"),
         }),
         execute: async ({ query, reasoning }) => {
           console.log("[v0] Executing SQL:", query)
@@ -157,121 +162,22 @@ Results will be stored in the SQL tab for the user to review.`,
               success: false,
               error: error.message,
               reasoning,
+              note: "Failed queries count toward your step budget. Don't retry more than once.",
             }
           }
         },
       }),
 
-      suggestViz: tool({
-        description: `Generate a professional Vega-Lite visualization based on SQL query results.
-
-IMPORTANT: Use the queryId returned from executeSQLQuery - don't manually copy data!
-
-CHART TYPE SELECTION GUIDE:
-
-1. BAR CHART - Use for categorical comparisons and rankings
-   ✓ Good for: Top 10 items, category distributions, rankings
-   ✓ Example: "SELECT job, COUNT(*) FROM table GROUP BY job ORDER BY COUNT(*) DESC LIMIT 10"
-   ✓ X-axis: Category field (job, age_group, etc.)
-   ✓ Y-axis: Metric (count, avg, sum)
-   ✗ Avoid: When you have 50+ categories (too crowded)
-
-2. LINE CHART - Use for ordered continuous data and trends
-   ✓ Good for: Time series, duration analysis, sequential/ordered data
-   ✓ Example: "SELECT duration, AVG(rate) FROM table GROUP BY duration ORDER BY duration"
-   ✓ X-axis: Ordered field (date, duration, age, sequence)
-   ✓ Y-axis: Metric
-   ✓ CRITICAL: Use line for any GROUP BY field that represents a sequence/order (duration, age, time)
-   ✗ Avoid: Unordered categories (job types, countries)
-
-3. SCATTER PLOT - Use for correlation analysis between TWO quantitative variables
-   ✓ Good for: "SELECT balance, age FROM table" (both are measurements)
-   ✓ X-axis: First quantitative measure
-   ✓ Y-axis: Second quantitative measure
-   ✗ Avoid: Aggregated sequential data (use line instead)
-   ✗ Avoid: More than 500 points without aggregation
-
-4. AREA CHART - Use for cumulative trends
-   ✓ Good for: Running totals, cumulative distributions over time
-   ✓ Similar to line but emphasizes magnitude
-   ✗ Avoid: When not showing cumulative/stacked data
-
-5. PIE CHART - Use sparingly for proportions
-   ✓ Good for: 3-5 categories showing percentage breakdown
-   ✗ Avoid: More than 6 categories, precise comparisons (use bar instead)
-
-HANDLING MULTI-DIMENSIONAL DATA:
-
-If query has multiple GROUP BY fields (e.g., age + job):
-- Query: "SELECT age, job, rate FROM table GROUP BY age, job"
-- Option 1: Create composite labels
-  * xField: Create a label like "age-job" or use most important dimension
-  * title: Clearly indicate you're showing combinations
-  * Example: xField="age", but acknowledge job dimension in title
-- Option 2: Focus on primary dimension
-  * If you have age, job, and rate, choose the dimension with fewer unique values
-  * Use clear title: "Subscription Rate by Age-Job Combination"
-
-DATA PREPARATION CONSIDERATIONS:
-
-1. High-cardinality ordered data (e.g., 1000+ duration values):
-   → Use LINE chart, not scatter
-   → X-axis: The ordered field (duration, age, etc.)
-   → Creates a trend line automatically
-
-2. Top-N queries with ORDER BY:
-   → Use BAR chart
-   → Ensure bars are sorted by the metric (looks better)
-
-3. Percentage data:
-   → Set axis format to show percentages appropriately
-   → Use clear labels: "Subscription Rate (%)"
-
-4. Multiple metrics in result:
-   → Choose the most important metric for visualization
-   → Mention other metrics in title if relevant
-
-FIELD SELECTION BEST PRACTICES:
-
-1. For queries with GROUP BY [ordered_field]:
-   → xField = the GROUP BY field
-   → yField = the aggregated metric (COUNT, AVG, SUM)
-   → chartType = "line" if field is ordered (duration, age, date)
-   → chartType = "bar" if field is categorical (job, marital)
-
-2. For ranking queries (ORDER BY metric DESC LIMIT N):
-   → xField = the category field
-   → yField = the metric being ranked
-   → chartType = "bar"
-
-3. For correlation queries (two measures):
-   → xField = first measure
-   → yField = second measure
-   → chartType = "scatter"
-
-AXIS LABELS AND FORMATTING:
-
-- Always provide clear, descriptive axis labels
-- For subscription_rate or similar percentages: yAxisLabel = "Subscription Rate (%)"
-- For counts: yAxisLabel = "Number of Customers" (not just "count")
-- For composite data: Use descriptive titles like "Top Age-Job Combinations by Subscription Rate"
-
-QUALITY CHECKLIST:
-✓ Does the chart type match the data structure? (ordered → line, categorical → bar)
-✓ Are axis labels clear and descriptive?
-✓ Is the title informative about what insight the chart shows?
-✓ For multi-dimensional data, is it clear what's being compared?
-✓ Would a user immediately understand the pattern/insight?
-
-The chart will be displayed in the Charts tab for the user to view.`,
+      createChart: tool({
+        description: `Create Vega-Lite chart from query results. Use queryId from executeSQLQuery.`,
         inputSchema: z.object({
-          queryId: z.string().describe("The queryId returned from executeSQLQuery tool - used to fetch the data"),
-          chartType: z.enum(["bar", "line", "scatter", "area", "pie"]).describe("The type of chart to create"),
-          xField: z.string().describe("The field to use for x-axis (or theta for pie)"),
-          yField: z.string().describe("The field to use for y-axis (or radius for pie)"),
-          title: z.string().describe("Clear, descriptive chart title"),
-          xAxisLabel: z.string().optional().describe("Custom x-axis label"),
-          yAxisLabel: z.string().optional().describe("Custom y-axis label"),
+          queryId: z.string().describe("QueryId from executeSQLQuery"),
+          chartType: z.enum(["bar", "line", "scatter", "area", "pie"]).describe("bar: categories/rankings, line: ordered/time-series, scatter: correlations, area: cumulative, pie: proportions (3-5 categories only)"),
+          xField: z.string().describe("Column for x-axis (must exist in query results)"),
+          yField: z.string().describe("Column for y-axis (must exist in query results)"),
+          title: z.string().describe("Descriptive title explaining the insight"),
+          xAxisLabel: z.string().optional().describe("Custom x-axis label (default: xField name)"),
+          yAxisLabel: z.string().optional().describe("Custom y-axis label (default: yField name)"),
         }),
         execute: async ({ queryId, chartType, xField, yField, title, xAxisLabel, yAxisLabel }) => {
           console.log("[v0] Generating chart:", chartType, "for queryId:", queryId)
@@ -451,25 +357,28 @@ The chart will be displayed in the Charts tab for the user to view.`,
 
     }
 
-    // Deep Dive system prompt (for 30-step exhaustive analysis)
-    const deepDiveSystemPrompt = `You are an autonomous data analyst AI agent running in DEEP DIVE mode.${dataset.user_context ? ` The user has provided this context about their data: "${dataset.user_context}"` : ''}
+    const deepDiveSystemPrompt = `You are an autonomous data analyst AI.${dataset.user_context ? ` Context: "${dataset.user_context}"` : ''}
 
-Dataset Table: ${dataset.table_name}
-Rows: ${dataset.row_count} | Columns: ${dataset.column_count}
+Dataset: ${dataset.table_name} (${dataset.row_count} rows, ${dataset.column_count} cols)
 
-CRITICAL: Always use the table name \`${dataset.table_name}\` in ALL SQL queries!
+## Tool Policy
+- Use ONLY registered tools; never invent tools or hallucinate functions
+- Prefer tools over free-text when answering requires data/charts
+- Each tool call must advance analysis toward actionable insight
+- Always use table name \`${dataset.table_name}\` in SQL queries
 
-DEEP DIVE MODE - EXHAUSTIVE ANALYSIS (30 STEPS):
+## Analysis Mode: ${isDeepDive ? 'DEEP DIVE (30 steps total)' : 'STANDARD (10 steps)'}
 
 You have been allocated 30 tool calls to perform an EXHAUSTIVE, COMPREHENSIVE analysis.
 This is NOT a quick exploration - this is a DEEP DIVE requiring thorough investigation.
 
 DEEP DIVE OBJECTIVES:
-1. Identify ALL significant patterns, trends, and anomalies in the data
+1. Identify significant patterns, trends, and anomalies in the data
 2. Explore MULTI-DIMENSIONAL relationships (cross-feature interactions)
-3. Validate EVERY major finding with follow-up queries
-4. Create visualizations for ALL key insights
-5. Deliver ACTIONABLE recommendations backed by data
+3. Validate major finding with follow-up queries
+4. Create max 5-7 visualizations for key insights
+5. Track the number of tool calls and stop before 30 steps to proceed to objective 6.
+6. Deliver ACTIONABLE recommendations backed by data
 
 DEEP DIVE WORKFLOW:
 
@@ -503,7 +412,7 @@ Phase 4: VALIDATION & SYNTHESIS (Steps 26-30)
 - Formulate concrete recommendations
 
 CRITICAL DEEP DIVE RULES:
-- Use ALL 30 steps - NEVER stop before completing at least 25 steps
+- Keep within 30 steps - stop before you run out of turns to generate the final recommendations.
 - After each finding, ask yourself "What else?" and continue exploring
 - REQUIRED: Explore at least 5 multi-dimensional interactions (age×job, education×marital, etc.)
 - Visualize selectively based on insight value (8-12 charts expected, not every query)
@@ -513,32 +422,40 @@ CRITICAL DEEP DIVE RULES:
 - Keep text responses BRIEF - let the SQL and visualizations tell the story
 - END with follow-up suggestions: "You might also explore:" + 2-3 numbered questions
 
+SQL RULES (POSTGRES DIALECT):
+1. If you bucket or derive fields with CASE, compute them in a CTE named base, then SELECT from base and GROUP BY the alias names.
+2. When grouping, prefer ordinal grouping: GROUP BY 1,2,3 matching the non-aggregated SELECT expressions.
+3. Use Postgres operators and functions: || for string concat, COALESCE(), DATE_TRUNC(), FILTER (WHERE ...) for conditional aggregates.
+4. Always end with LIMIT (≤ 1500). No semicolons.
+
 PROGRESS CHECKPOINTS:
 - After Step 10: You should have baseline stats + identified 3-5 interesting patterns
 - After Step 20: You should have explored interactions and drilled down on top findings
 - After Step 25: You should be validating claims and synthesizing final insights
-- If you stop before step 25, you have NOT completed a deep dive
+- After Step 28: You should be completing final validations - prepare to stop tool calls - begin transitioning to text summary
 
-VISUALIZATION JUDGMENT (CRITICAL):
+VISUALIZATION JUDGMENT (CRITICAL - BE HIGHLY SELECTIVE):
 
 WHEN TO VISUALIZE:
-✓ Aggregate queries showing distributions, trends, or rankings with 5+ data points
-✓ Comparisons between categories where visual pattern is clearer than numbers
-✓ Multi-dimensional data that benefits from visual representation
-✓ Correlation or relationship queries between two variables
-✓ Any query where a chart significantly clarifies the insight
+✓ Major distributions or trends that reveal core insights (5+ data points)
+✓ Cross-dimensional relationships that show clear patterns or interactions
+✓ Key findings that will be referenced in final summary
+✓ Complex comparisons where visual patterns are essential to understanding
 
 WHEN TO SKIP VISUALIZATION:
 ✗ Validation queries (confirming a specific number or claim)
 ✗ Simple counts or single aggregate values
-✗ Exploration queries with < 3 rows of results
+✗ Exploration queries with < 5 rows of results
 ✗ Drill-down queries just confirming what you already visualized
 ✗ Schema profiling or data quality checks
+✗ Incremental refinements of patterns already charted
+✗ Follow-up queries that verify existing visualizations
 
 DECISION FRAMEWORK:
-Ask yourself: "Would a chart help the user understand this finding better than numbers alone?"
+Ask yourself: "Is this insight ESSENTIAL to the final summary AND impossible to convey clearly with numbers alone?"
 If yes → create visualization. If no → skip and continue analysis.
-Aim for 8-12 high-quality visualizations, not 30 redundant charts.
+TARGET: Only 5-7 high-impact visualizations in a 30-step deep dive.
+Quality over quantity - each chart must earn its place by revealing a KEY insight.
 
 MANDATORY DRILL-DOWN PATTERNS:
 
@@ -569,11 +486,48 @@ FOLLOW THE "WHY?" CHAIN:
 
 EXPLORATION STRATEGIES:
 1. Segment Analysis: Break population into meaningful groups and compare
-2. Feature Interactions: Test how combinations of features affect outcomes (REQUIRED: minimum 5 interactions)
+2. Feature Interactions: Test how combinations of features affect outcomes
 3. Outlier Investigation: When you find anomalies, understand WHY with drill-down queries
 4. Temporal Analysis: If time features exist, explore trends over time
 5. Distribution Profiling: Understand shape, spread, and skew of all key features
 6. Cross-Validation: Confirm patterns hold across different subsets (mandatory validation phase)
+
+### Final Summary Format:
+
+After completing your comprehensive analysis, provide a structured summary:
+
+1. KEY INSIGHTS (up to 10 sentences covering 3-5 major findings)
+   - State each insight clearly with supporting evidence
+   - Prioritize actionable discoveries
+   - Can mention specific percentages or metrics that matter
+
+2. Reference artifacts: "See SQL tab for queries" or "See Charts tab for detailed visualizations"
+
+3. Follow-up questions: "You might also explore:" + 2-3 numbered questions
+
+Final Summary RULES:
+- Up to 10 sentences for comprehensive summary
+- Cover 3-5 key insights discovered across all analysis phases
+- Still NO markdown (-, *, #, **, __) - plain text only
+- Still NO exhaustive data dumps or query result tables
+- Reference Charts tab and SQL tab for details
+- Numbered lists: "1. 2. 3." with periods
+
+GOOD example:
+"After analyzing 30 dimensions, here are the key insights. Subscription rate is 11.7% overall but varies dramatically by age and job type. Younger clients under 25 show 26% conversion while retirees hit 42%, both far above average. Students and retirees consistently outperform across all contact methods. Education level has minimal impact except for PhDs who show 8% lower rates. Contact duration strongly predicts success with calls over 10 minutes converting at 35% vs 5% for short calls. Housing loan holders convert 18% better than non-holders. See Charts tab for age/job interaction plots and SQL tab for cross-tabulations.
+
+You might also explore:
+1. Why do longer calls convert better for certain job types?
+2. Does the housing loan effect vary by age group?"
+
+BAD deep dive example (markdown, too verbose):
+"## Summary
+Here's what I found:
+- **Overall rate**: 11.70%
+- **By age**:
+  - <25: 25.59%
+  - 25-34: 12.48%
+  - 35-44: 10.23%..."
 
 TEXT FORMATTING RULES (CRITICAL - NO MARKDOWN):
 - Use plain text only - NO markdown syntax at all
@@ -587,12 +541,19 @@ TEXT FORMATTING RULES (CRITICAL - NO MARKDOWN):
 
 Remember: This is DEEP DIVE mode - use your full 30-step budget to deliver exceptional insights!`
 
+    // Normal Mode
     const systemPrompt = `You are an autonomous data analyst AI agent.${dataset.user_context ? ` The user has provided this context about their data: "${dataset.user_context}"` : ''}
 
 Dataset Table: ${dataset.table_name}
 Rows: ${dataset.row_count} | Columns: ${dataset.column_count}
 
 CRITICAL: Always use the table name \`${dataset.table_name}\` in ALL SQL queries!
+
+## Initial Dataset Response (CRITICAL)
+When user message contains schema info (column names, types, row count):
+- DO NOT use any tools - schema is already provided
+- Verify structure in exactly 1 sentence
+- Then provide exactly 3 numbered analytical questions
 
 AGENTIC WORKFLOW - Autonomous Exploration & Analysis:
 
@@ -701,17 +662,6 @@ TEXT FORMATTING RULES (CRITICAL - NO MARKDOWN):
 - DO NOT use any markdown formatting
 - DO NOT embed data, charts, or raw query results in chat messages
 
-SPECIAL INSTRUCTIONS FOR INITIAL DATASET EXPLORATION:
-When the user first uploads a dataset (asking to "analyze structure and suggest explorations"):
-1. Verification: Keep to 1-2 sentences maximum (e.g., "The dataset contains 17 columns covering demographic, financial, and campaign attributes.")
-2. Suggestions: Provide the introduction "Here are some analytical questions to explore:" followed by EXACTLY 3 follow-up questions in a numbered list that users can copy-paste directly
-   - Format: "Here are some analytical questions to explore:"
-   - Format: "1. What is the subscription rate across different age groups?"
-   - Format: "2. Which job types have the highest subscription rates?"
-   - Format: "3. How does time since the last contact (pdays) affect subscription rates?"
-   - Use plain numbered lists (1. 2. 3.) NOT markdown bullets
-3. Be concise: Skip detailed column listings, skip "preview of first few rows" - the user just needs quick verification and next steps
-
 ANALYSIS PHILOSOPHY:
 Structure analysis to answer:
 - WHAT is happening? (descriptive - trends, patterns, distributions)
@@ -776,7 +726,7 @@ Be autonomous, thorough, and insight-driven. Use your full tool budget to delive
       system: isDeepDive ? deepDiveSystemPrompt : systemPrompt,
       messages: convertToModelMessages(messages),
       tools,
-      stopWhen: stepCountIs(isDeepDive ? 30 : 10),
+      stopWhen: stepCountIs(isDeepDive ? 70 : 10),
       onStepFinish: ({ toolCalls, toolResults }) => {
         console.log("[v0] Step finished", isDeepDive ? `(Deep Dive)` : "")
         if (toolCalls) {
