@@ -8,20 +8,23 @@ An AI-powered data analysis platform that enables interactive exploration of CSV
 ## Features
 
 ### 🤖 AI-Powered Analysis
+- **Dual-Model Architecture**: GPT-4o for standard mode (fast, cost-effective) and GPT-5 for deep dive mode (advanced reasoning)
 - **Autonomous Agentic Workflow**: 5-stage iterative exploration (EXPLORE → VISUALIZE → REFINE → VALIDATE → SUMMARIZE)
 - **Multi-Step Tool Calling**: Up to 10 autonomous tool calls per analysis for standard exploration
-- **Deep Dive Mode**: Optional exhaustive analysis with 30 tool calls for comprehensive insights (customizable prompt)
+- **Deep Dive Mode**: Optional exhaustive analysis with up to 40 steps (30 for exploration, 10 reserved for summary generation)
 - **Proactive Drill-Down**: AI automatically investigates spikes, outliers, and patterns without prompting
-- **Smart Visualizations**: Generates Vega-Lite charts based on judgment and data patterns
-- **Self-Correction**: Retries failed queries with adjusted approach
+- **Smart Visualizations**: Generates 5-7 high-impact Vega-Lite charts based on judgment and data patterns
+- **Self-Correction**: Retries failed queries with helpful error messages and fix suggestions
 - **Token-Efficient Architecture**: Reference-based data flow minimizes token usage while maintaining full data access
 - **Contextual Insights**: AI understands your data context and suggests relevant explorations
 
 ### 🔬 Deep Dive Analysis
-- **One-Click Exhaustive Analysis**: Trigger comprehensive 30-step exploration from chat header
+- **One-Click Exhaustive Analysis**: Trigger comprehensive exploration with 30 tool calls + 10-step summary buffer
 - **Customizable Prompts**: Edit analysis objectives to focus on specific aspects
 - **4-Phase Workflow**: Baseline Understanding → Pattern Discovery → Cross-Analysis → Validation & Synthesis
 - **Multi-Dimensional Exploration**: Investigates feature interactions, segments, and complex patterns
+- **Selective Visualization**: Creates only 5-7 essential charts (quality over quantity)
+- **GPT-5 Powered**: Leverages advanced reasoning for comprehensive insights
 - **Extended Analysis Time**: 180-second timeout supports thorough investigation (2-3 minutes)
 - **Transparent**: Shows exact prompt being sent with character count
 
@@ -59,7 +62,9 @@ An AI-powered data analysis platform that enables interactive exploration of CSV
 
 ### Backend
 - **Supabase Postgres** for data storage and dynamic table creation
-- **OpenAI GPT-4o** for AI agent capabilities
+- **OpenAI AI Models**:
+  - GPT-4o for standard mode (fast, cost-effective analysis)
+  - GPT-5 for deep dive mode (advanced reasoning, 40-step workflows)
 - **Node.js Runtime** for API routes with SQL operations
 
 ### AI Tools (Server-Side)
@@ -72,19 +77,19 @@ The AI agent uses a minimal 2-tool system with reference-based data flow:
    - Preview: First 5 rows only (token-efficient)
    - QueryId: Reference for fetching full data later
 
-2. **`suggestViz`**: Generates Vega-Lite chart specifications
+2. **`createChart`**: Generates Vega-Lite chart specifications
    - Accepts `queryId` parameter from executeSQLQuery
    - Fetches full data from `runs` table using queryId
    - Creates professional visualizations with proper styling
    - Supports: bar, line, scatter, area, pie charts
 
-**Reference-Based Pattern**: Instead of passing large datasets through AI context, executeSQLQuery stores data in DB and returns a small preview + queryId. When visualization is needed, suggestViz fetches the full data using the queryId. This dramatically reduces token usage while maintaining full data access.
+**Reference-Based Pattern**: Instead of passing large datasets through AI context, executeSQLQuery stores data in DB and returns a small preview + queryId. When visualization is needed, createChart fetches the full data using the queryId. This dramatically reduces token usage while maintaining full data access.
 
 ## AI Analysis Workflow
 
 The AI agent operates autonomously through a 5-stage iterative workflow powered by multi-step tool calling:
-- **Standard Mode**: `stepCountIs(10)` for quick, focused analysis
-- **Deep Dive Mode**: `stepCountIs(30)` for exhaustive, comprehensive exploration
+- **Standard Mode**: `stepCountIs(10)` for quick, focused analysis (GPT-4o)
+- **Deep Dive Mode**: `stepCountIs(40)` for exhaustive exploration - 30 tool calls + 10-step summary buffer (GPT-5)
 
 ### 1. **EXPLORE** - Execute SQL Queries
 - Starts with broad queries to understand data distribution
@@ -132,12 +137,12 @@ User: "What factors affect subscription rates?"
 
 Step 1: executeSQLQuery → 11.7% baseline rate (45,211 records)
 Step 2: executeSQLQuery by age → Age 18-25 shows 58% (SPIKE!)
-        → suggestViz (bar chart)
+        → createChart (bar chart)
 Step 3: executeSQLQuery → Drill down: Students 18-25 have 72% rate
-        → suggestViz (bar chart)
+        → createChart (bar chart)
 Step 4: executeSQLQuery → Verify finding: Confirmed 72.1%
 Step 5: executeSQLQuery by marital → Singles 14.3% vs married 9.2%
-        → suggestViz (bar chart)
+        → createChart (bar chart)
 Step 6: Summary: "Students aged 18-25 show 72% rate vs 11.7% baseline.
         Singles also elevated at 14.3%. See SQL and Charts tabs."
 ```
@@ -146,7 +151,7 @@ This demonstrates: baseline → exploration → spike detection → drill-down �
 
 ## Deep Dive Mode
 
-For complex datasets or when you need comprehensive insights, activate **Deep Dive Mode** for an exhaustive 30-step analysis.
+For complex datasets or when you need comprehensive insights, activate **Deep Dive Mode** for an exhaustive analysis using up to 40 steps (30 for exploration + 10 reserved for summary).
 
 ### How to Use Deep Dive
 
@@ -154,9 +159,12 @@ For complex datasets or when you need comprehensive insights, activate **Deep Di
 2. **Review/Edit the analysis prompt** in the dialog:
    - Default: "Conduct a comprehensive analysis to identify actionable insights. Explore individual feature relationships with the target variable, multi-dimensional interactions between features, and key patterns or segments. Use exploratory analysis, visualization, statistical validation, and synthesis to deliver data-driven recommendations."
    - Customize to focus on specific features, business questions, or analytical approaches
-3. **Click "Start Deep Dive"** to begin (analysis takes 2-3 minutes)
+3. **Click "Start Deep Dive"** to begin (analysis takes 2-3 minutes, powered by GPT-5)
 
-### Deep Dive Workflow (30 Steps)
+### Deep Dive Workflow (40 Steps Total)
+
+**Tool Budget:** 30 steps for SQL queries and visualizations
+**Summary Buffer:** 10 steps reserved for generating comprehensive final summary
 
 The agent follows a structured 4-phase approach:
 
@@ -177,11 +185,12 @@ The agent follows a structured 4-phase approach:
 - Validate patterns across subpopulations
 - Explore temporal patterns if applicable
 
-**Phase 4: Validation & Synthesis (Steps 26-30)**
-- Verify all major claims
-- Cross-check findings for consistency
-- Identify top 3-5 actionable insights
-- Create summary visualizations
+**Phase 4: Validation & Synthesis (Steps 26-40)**
+- Verify all major claims (steps 26-28)
+- Cross-check findings for consistency (steps 28-30)
+- Identify top 3-5 actionable insights (step 30)
+- Create 5-7 summary visualizations (selective, high-impact only)
+- Generate comprehensive text summary (steps 31-40)
 - Formulate concrete recommendations
 
 ### When to Use Deep Dive
@@ -294,10 +303,11 @@ npm run dev
   - Generates relevant visualizations
   - Validates findings
   - Provides concise insights
-- Switch to **Deep Dive mode** for exhaustive 30-step analysis:
+- Switch to **Deep Dive mode** for exhaustive analysis (up to 40 steps):
   - Click "Deep Dive" button in chat header
   - Customize the analysis prompt if needed
-  - Get comprehensive insights with 10-15 visualizations
+  - Get comprehensive insights with 5-7 high-impact visualizations
+  - Powered by GPT-5 for advanced reasoning
 
 ### 3. Review Artifacts
 - **Preview Tab**: Browse your raw data
@@ -317,23 +327,47 @@ npm run dev
 ### Data Flow (Reference-Based Pattern)
 1. **CSV Upload** → Parsed and inserted into Postgres table `ds_<datasetId>`
 2. **User Question** → AI agent initiates autonomous 5-stage workflow
-3. **Tool Execution Loop** (up to 10 steps standard, 30 for deep dive):
-   - Standard mode: `stepCountIs(10)` for focused analysis
-   - Deep dive mode: `stepCountIs(30)` for comprehensive exploration
+3. **Tool Execution Loop**:
+   - **Standard mode** (GPT-4o): `stepCountIs(10)` for focused analysis
+   - **Deep dive mode** (GPT-5): `stepCountIs(40)` with 30+10 buffer strategy:
+     - Steps 1-30: SQL exploration and selective visualization (5-7 charts)
+     - Steps 31-40: Reserved for comprehensive text summary generation
+     - This buffer ensures final summary is always generated even if tool calls run long
    - **executeSQLQuery**:
      - Executes SELECT query against dataset table
      - Stores full results in `runs.sample` (JSONB)
      - Returns to AI: `{ queryId, rowCount, preview }` (only 5 rows)
-   - **suggestViz** (if visualization adds insight):
+     - On error: Returns helpful message with fix suggestions (e.g., lists available columns)
+   - **createChart** (selective, judgment-based):
      - Receives queryId from executeSQLQuery
      - Fetches full data from `runs` table using queryId
      - Generates Vega-Lite spec and stores in `runs.chart_spec`
+     - Only created for high-impact insights (5-7 per deep dive)
    - AI examines preview, decides next action (drill-down, verify, visualize, etc.)
    - Loop continues until analysis is complete or step limit reached
 4. **Streaming Response** → Results streamed to client via `toUIMessageStreamResponse()`
 5. **Artifact Storage** → All queries and charts saved to `runs` table for history
 
 **Token Efficiency**: By storing full datasets in the database and only passing 5-row previews through AI context, the system maintains full data access while dramatically reducing token consumption. The queryId reference pattern eliminates redundant data transfer between tools.
+
+### SQL Best Practices (PostgreSQL Dialect)
+
+The AI agent follows these PostgreSQL-specific patterns to avoid common errors:
+
+1. **CTE Pattern for Derived Fields**: When using CASE expressions or derived columns, compute them in a CTE named `base`, then SELECT from `base` and GROUP BY the alias names
+   ```sql
+   WITH base AS (
+     SELECT CASE WHEN age < 25 THEN 'young' ELSE 'old' END AS age_group
+     FROM table
+   )
+   SELECT age_group, COUNT(*) FROM base GROUP BY age_group
+   ```
+
+2. **Ordinal Grouping**: Prefer `GROUP BY 1,2,3` (matching SELECT order) over repeating column names
+
+3. **Postgres Operators**: Use `||` for string concatenation, `COALESCE()`, `DATE_TRUNC()`, `FILTER (WHERE ...)` for conditional aggregates
+
+4. **Always LIMIT, No Semicolons**: Every query ends with `LIMIT ≤1500` with no trailing semicolons
 
 ### Database Schema
 - `datasets`: Metadata about uploaded CSV files
@@ -343,7 +377,8 @@ npm run dev
 - `ds_<datasetId>`: Dynamic tables for each uploaded dataset
 
 ### Security
-- **SQL Safety**: SELECT-only queries with automatic LIMIT (≤500 rows)
+- **SQL Safety**: SELECT-only queries with automatic LIMIT (≤1500 rows), no semicolons allowed
+- **Error Recovery**: Helpful error messages with fix suggestions (e.g., lists available columns on column-not-found errors)
 - **Timeout Protection**: 5-second query timeout
 - **Input Validation**: CSV size and column limits enforced
 - **Session-Based**: Datasets deleted on browser close

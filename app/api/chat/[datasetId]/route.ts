@@ -5,7 +5,7 @@ import { getPostgresPool } from "@/lib/postgres"
 import { guardSQL } from "@/lib/sql-guard"
 import { createServerClient } from "@/lib/supabase/server"
 
-export const maxDuration = 180 // Increased to support deep dive analysis (30 steps)
+export const maxDuration = 180
 
 export async function POST(req: Request, { params }: { params: Promise<{ datasetId: string }> }) {
   try {
@@ -415,7 +415,7 @@ CRITICAL DEEP DIVE RULES:
 - Keep within 30 steps - stop before you run out of turns to generate the final recommendations.
 - After each finding, ask yourself "What else?" and continue exploring
 - REQUIRED: Explore at least 5 multi-dimensional interactions (age×job, education×marital, etc.)
-- Visualize selectively based on insight value (8-12 charts expected, not every query)
+- Visualize selectively based on insight value (5-7 charts expected, not every query)
 - VALIDATE key findings with follow-up queries (mandatory, not optional)
 - Look for INTERACTIONS between features, not just individual effects
 - Be PROACTIVE: don't wait for follow-up questions, investigate thoroughly now
@@ -552,8 +552,15 @@ CRITICAL: Always use the table name \`${dataset.table_name}\` in ALL SQL queries
 ## Initial Dataset Response (CRITICAL)
 When user message contains schema info (column names, types, row count):
 - DO NOT use any tools - schema is already provided
-- Verify structure in exactly 1 sentence
-- Then provide exactly 3 numbered analytical questions
+- Verification: Keep to 1-2 sentences maximum (e.g., "The dataset contains 17 columns covering demographic, financial, and campaign attributes.")
+- Suggestions: Provide the introduction "Here are some analytical questions to explore:" followed by EXACTLY 3 follow-up questions in a numbered list that users can copy-paste directly
+   - Format: "Here are some analytical questions to explore:"
+   - Format: "1. What is the subscription rate across different age groups?"
+   - Format: "2. Which job types have the highest subscription rates?"
+   - Format: "3. How does time since the last contact (pdays) affect subscription rates?"
+   - Use plain numbered lists (1. 2. 3.) NOT markdown bullets
+- Be concise: Skip detailed column listings, skip "preview of first few rows" - the user just needs quick verification and next steps
+
 
 AGENTIC WORKFLOW - Autonomous Exploration & Analysis:
 
@@ -722,11 +729,11 @@ Be autonomous, thorough, and insight-driven. Use your full tool budget to delive
     console.log("[v0] Starting streamText with", messages.length, "messages", isDeepDive ? "(DEEP DIVE MODE)" : "(NORMAL MODE)")
 
     const result = streamText({
-      model: openai("gpt-4o"),
+      model: openai(isDeepDive ? "gpt-5" : "gpt-4o"),
       system: isDeepDive ? deepDiveSystemPrompt : systemPrompt,
       messages: convertToModelMessages(messages),
       tools,
-      stopWhen: stepCountIs(isDeepDive ? 70 : 10),
+      stopWhen: stepCountIs(isDeepDive ? 40 : 10),
       onStepFinish: ({ toolCalls, toolResults }) => {
         console.log("[v0] Step finished", isDeepDive ? `(Deep Dive)` : "")
         if (toolCalls) {

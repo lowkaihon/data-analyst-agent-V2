@@ -79,22 +79,30 @@ export function validateReadOnlySQL(sql: string): { valid: boolean; error?: stri
 }
 
 export function ensureLimit(sql: string, maxLimit = 500): string {
-  const upperSQL = sql.toUpperCase()
+  // Strip trailing semicolon if present
+  let cleanSql = sql.trim()
+  const hasSemicolon = cleanSql.endsWith(';')
+  if (hasSemicolon) {
+    cleanSql = cleanSql.slice(0, -1).trim()
+  }
+
+  const upperSQL = cleanSql.toUpperCase()
 
   // If already has LIMIT, respect it but cap at maxLimit
   if (upperSQL.includes("LIMIT")) {
-    const limitMatch = sql.match(/LIMIT\s+(\d+)/i)
+    const limitMatch = cleanSql.match(/LIMIT\s+(\d+)/i)
     if (limitMatch) {
       const requestedLimit = Number.parseInt(limitMatch[1], 10)
       if (requestedLimit > maxLimit) {
-        return sql.replace(/LIMIT\s+\d+/i, `LIMIT ${maxLimit}`)
+        cleanSql = cleanSql.replace(/LIMIT\s+\d+/i, `LIMIT ${maxLimit}`)
       }
     }
-    return sql
+    return hasSemicolon ? `${cleanSql};` : cleanSql
   }
 
   // Add LIMIT if not present
-  return `${sql.trim()} LIMIT ${maxLimit}`
+  const result = `${cleanSql} LIMIT ${maxLimit}`
+  return hasSemicolon ? `${result};` : result
 }
 
 export function sanitizeTableName(datasetId: string): string {

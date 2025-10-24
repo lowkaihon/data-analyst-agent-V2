@@ -140,7 +140,7 @@ export async function POST(req: Request) {
   const modelMessages = convertToModelMessages(messages)
 
   const result = streamText({
-    model: openai("gpt-4o"),
+    model: openai("gpt-5"),
     tools: { executeSQLQuery: sqlExecutorBridgeTool },
     system: systemPrompt,
     messages: modelMessages,
@@ -232,7 +232,7 @@ This documentation is essential for understanding:
 
 ```typescript
 const result = streamText({
-  model: openai("gpt-4o"),
+  model: openai("gpt-5"),
   messages: modelMessages,
   tools: { executeSQLQuery },
   stopWhen: stepCountIs(10), // CURRENT API - replaces deprecated maxSteps
@@ -245,7 +245,7 @@ Control how and when tools are called using the `toolChoice` parameter:
 
 ```typescript
 const result = streamText({
-  model: openai("gpt-4o"),
+  model: openai("gpt-5"),
   messages: modelMessages,
   tools: { executeSQLQuery },
   toolChoice: 'auto', // Options: 'auto', 'required', 'none', or specific tool name
@@ -344,3 +344,29 @@ Display tool execution states using AI Elements:
 
 - shadcn/ui: `pnpm dlx shadcn@latest add [component-name]`
 - AI Elements: `pnpm dlx ai-elements@latest` (adds all components)
+
+
+### MISC
+/* These are implementation details specific to this project - the generic patterns in CLAUDE.md are still
+  correct:
+
+  1. Custom Body Parameters (Line 172-177)
+  - CLAUDE.md shows: Static context in body: { schema, sample, rowCount }
+  - This codebase also uses: Dynamic parameters like sendMessage({ text: input }, { body: { mode: "deep-dive"
+  } })
+  - Generic pattern is valid - just showing one use case
+
+  2. Dual Model Selection
+  - This codebase uses: model: openai(isDeepDive ? "gpt-5" : "gpt-4o")
+  - CLAUDE.md shows: Single model openai("gpt-5")
+  - Generic pattern is valid - conditional model selection is just an application-specific choice
+
+  3. Tool UI Example (Lines 295-317)
+  - CLAUDE.md shows: Generic tool part filtering with part.type === "tool"
+  - This codebase uses: More specific ToolUIPart type with part.type?.startsWith("tool-")
+  - Generic pattern is valid - actual implementation has additional type safety layers
+
+  4. Callbacks
+  - This codebase also uses: onError, onFinish, onStepFinish callbacks
+  - CLAUDE.md doesn't show these - but they're optional features, not required patterns
+  - Generic patterns shown are complete for basic usage */
