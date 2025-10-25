@@ -61,7 +61,14 @@ An AI-powered data analysis platform that enables interactive exploration of CSV
 - **Lucide React** for icons
 
 ### Backend
-- **Supabase Postgres** for data storage and dynamic table creation
+- **Supabase Postgres** for:
+  - Metadata storage (`datasets`, `chat_turns`, `runs`, `reports` tables)
+  - User authentication and RLS (Row Level Security)
+  - Dynamic dataset table creation
+- **Direct Postgres Connection** via `@neondatabase/serverless`:
+  - Used for DDL operations (CREATE TABLE)
+  - Optimized batch inserts with dynamic sizing
+  - Transaction-wrapped ingestion for ACID compliance
 - **OpenAI AI Models**:
   - GPT-4o for standard mode (fast, cost-effective analysis)
   - GPT-5 for deep dive mode (advanced reasoning, 40-step workflows)
@@ -236,57 +243,77 @@ Analyze subscription trends by month and day. Identify optimal contact timing pa
 ## Getting Started
 
 ### Prerequisites
-- Node.js 18+ 
+- Node.js 18+
+- pnpm package manager
 - Supabase account with Postgres database
 - OpenAI API key
 
 ### Installation
 
-1. Clone the repository:
-\`\`\`bash
-git clone https://github.com/yourusername/data-analyst-agent.git
-cd data-analyst-agent
-\`\`\`
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/yourusername/data-analyst-agent.git
+   cd data-analyst-agent
+   ```
 
-2. Install dependencies:
-\`\`\`bash
-npm install
-\`\`\`
+2. **Install dependencies:**
+   ```bash
+   pnpm install
+   ```
 
-3. Set up environment variables:
-\`\`\`bash
-# Copy the example env file
-cp .env.example .env.local
+3. **Set up environment variables:**
 
-# Add your credentials:
-# - SUPABASE_* variables (from Supabase project settings)
-# - OPENAI_API_KEY (from OpenAI dashboard)
-# - NEON_* variables (if using Neon for Postgres)
-\`\`\`
+   Copy the example env file:
+   ```bash
+   cp .env.example .env.local
+   ```
 
-4. Initialize the database:
+   Add your credentials to `.env.local`:
+
+   **Required variables:**
+   - `OPENAI_API_KEY` - Get from [OpenAI dashboard](https://platform.openai.com/api-keys)
+   - `SUPABASE_POSTGRES_URL_NON_POOLING` - From Supabase project settings → Database → Connection string (Direct connection)
+   - `SUPABASE_POSTGRES_URL` - From Supabase project settings → Database → Connection string (Session pooling)
+   - `NEXT_PUBLIC_SUPABASE_URL` - From Supabase project settings → API → Project URL
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` - From Supabase project settings → API → Project API keys (anon/public)
+   - `SUPABASE_SERVICE_ROLE_KEY` - From Supabase project settings → API → Project API keys (service_role)
+
+   Example `.env.local`:
+   ```bash
+   # OpenAI API
+   OPENAI_API_KEY=sk-proj-...
+
+   # Supabase (Direct Postgres Connection)
+   SUPABASE_POSTGRES_URL_NON_POOLING="postgres://postgres.[ref]:password@aws-0-region.pooler.supabase.com:5432/postgres?sslmode=require"
+   SUPABASE_POSTGRES_URL="postgres://postgres.[ref]:password@aws-0-region.pooler.supabase.com:6543/postgres?sslmode=require"
+
+   # Supabase (Client Authentication)
+   NEXT_PUBLIC_SUPABASE_URL="https://[ref].supabase.co"
+   NEXT_PUBLIC_SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+   SUPABASE_SERVICE_ROLE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+   ```
+
+4. **Initialize the database:**
 
    **For first-time setup:**
-   \`\`\`bash
-   # Run scripts/002_initialize_database.sql in your Supabase SQL editor
-   # This creates all necessary tables and indexes
-   \`\`\`
+   - Open your Supabase project → SQL Editor
+   - Run `scripts/002_initialize_database.sql`
+   - This creates all necessary tables (`datasets`, `chat_turns`, `runs`, `reports`) and indexes
 
    **If you need to reset an existing database:**
-   \`\`\`bash
-   # ⚠️  WARNING: This will delete all data!
-   # First run: scripts/000_reset_database.sql
-   # Then run: scripts/002_initialize_database.sql
-   \`\`\`
+   > ⚠️ **WARNING**: This will delete all data!
+   - First run: `scripts/000_reset_database.sql`
+   - Then run: `scripts/002_initialize_database.sql`
 
-   > **Note**: The database schema was updated to include \`table_name\`, \`column_count\`, and \`user_context\` fields. If you ran the old schema, you must reset your database using the scripts above.
+   > **Note**: The database schema includes `table_name`, `column_count`, and `user_context` fields. If you ran an older schema version, you must reset your database using the scripts above.
 
-5. Run the development server:
-\`\`\`bash
-npm run dev
-\`\`\`
+5. **Run the development server:**
+   ```bash
+   pnpm dev
+   ```
 
-6. Open [http://localhost:3000](http://localhost:3000) in your browser
+6. **Open your browser:**
+   Navigate to [http://localhost:3000](http://localhost:3000)
 
 ## Usage
 
@@ -324,8 +351,35 @@ npm run dev
 
 ## Architecture
 
+### CSV Ingestion Pipeline
+
+The application uses an optimized batch ingestion system with enterprise-grade reliability:
+
+1. **File Validation**:
+   - Size limit: 20MB maximum
+   - Column limit: 200 columns maximum
+   - Multi-delimiter support: comma, semicolon, tab
+
+2. **Type Inference**:
+   - Samples first 100 rows to infer column types
+   - Supports: INTEGER, DOUBLE PRECISION, BOOLEAN, TIMESTAMPTZ, TEXT
+   - Smart type detection with fallback to TEXT
+
+3. **Dynamic Batch Insertion**:
+   - **Parameter limit safety**: Calculates batch size as `floor(60000 / column_count)` to prevent PostgreSQL's 65,535 parameter limit
+   - **Transaction wrapping**: All inserts wrapped in BEGIN/COMMIT for ACID compliance
+   - **Automatic rollback**: On any error, rolls back all changes and cleans up metadata
+   - **Progress logging**: Detailed batch-by-batch progress (e.g., "Inserted batch 5/12")
+
+4. **Error Handling**:
+   - Failed inserts trigger automatic rollback
+   - Orphaned dataset records are cleaned up
+   - Detailed error messages returned to client
+
+**Example**: A CSV with 150 columns will use batch size of 400 rows (60,000 ÷ 150 = 400), while a CSV with 10 columns will use the maximum batch size of 1,000 rows.
+
 ### Data Flow (Reference-Based Pattern)
-1. **CSV Upload** → Parsed and inserted into Postgres table `ds_<datasetId>`
+1. **CSV Upload** → Parsed and inserted into Postgres table `ds_<datasetId>` using optimized batch pipeline
 2. **User Question** → AI agent initiates autonomous 5-stage workflow
 3. **Tool Execution Loop**:
    - **Standard mode** (GPT-4o): `stepCountIs(10)` for focused analysis

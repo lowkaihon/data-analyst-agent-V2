@@ -122,38 +122,89 @@ export async function POST(req: NextRequest) {
     const pool = getPostgresPool()
     const createTableSQL = generateCreateTableSQL(tableName, columnTypes)
 
-    try {
-      await pool.query(createTableSQL)
-      console.log("[v0] Table created successfully:", tableName)
-    } catch (createError) {
-      console.error("[v0] Table creation error:", createError)
-      return NextResponse.json({ error: "Failed to create data table" }, { status: 500 })
-    }
+    // Use a single database client for transaction support
+    const client = await pool.connect()
 
-    // Insert data in batches using direct Postgres connection
-    const batchSize = 1000
-    for (let i = 0; i < records.length; i += batchSize) {
-      const batch = records.slice(i, i + batchSize)
+    try {
+      // Create table
+      await client.query(createTableSQL)
+      console.log("[v0] Table created successfully:", tableName)
+
+      // Start transaction for atomic inserts
+      await client.query("BEGIN")
 
       try {
-        // Build parameterized INSERT query
-        const columnNames = Object.keys(batch[0])
-        const placeholders = batch
-          .map((_, rowIdx) => {
-            const rowPlaceholders = columnNames.map((_, colIdx) => `$${rowIdx * columnNames.length + colIdx + 1}`)
-            return `(${rowPlaceholders.join(", ")})`
-          })
-          .join(", ")
+        // Insert data using optimized batch inserts with dynamic sizing
+        const columnNames = Object.keys(records[0])
 
-        const insertSQL = `INSERT INTO ${tableName} (${columnNames.map((c) => `"${c}"`).join(", ")}) VALUES ${placeholders}`
-        const values = batch.flatMap((row) => columnNames.map((col) => row[col]))
+        // Calculate safe batch size to avoid PostgreSQL parameter limit (65535)
+        // Formula: batch_size = floor(60000 / column_count) for safety margin
+        const dynamicBatchSize = Math.max(1, Math.floor(60000 / columnNames.length))
+        const batchSize = Math.min(dynamicBatchSize, 1000) // Cap at 1000 for reasonable query size
 
-        await pool.query(insertSQL, values)
-        console.log(`[v0] Inserted batch ${i / batchSize + 1} (${batch.length} rows)`)
+        console.log(
+          `[v0] Inserting ${records.length} rows in batches of ${batchSize} (${columnNames.length} columns)`,
+        )
+
+        // Insert in batches
+        for (let i = 0; i < records.length; i += batchSize) {
+          const batch = records.slice(i, i + batchSize)
+
+          // Build parameterized INSERT query
+          const placeholders = batch
+            .map((_, rowIdx) => {
+              const rowPlaceholders = columnNames.map((_, colIdx) => `$${rowIdx * columnNames.length + colIdx + 1}`)
+              return `(${rowPlaceholders.join(", ")})`
+            })
+            .join(", ")
+
+          const insertSQL = `INSERT INTO ${tableName} (${columnNames.map((c) => `"${c}"`).join(", ")}) VALUES ${placeholders}`
+          const values = batch.flatMap((row) => columnNames.map((col) => row[col]))
+
+          await client.query(insertSQL, values)
+
+          const batchNumber = Math.floor(i / batchSize) + 1
+          const totalBatches = Math.ceil(records.length / batchSize)
+          console.log(`[v0] Inserted batch ${batchNumber}/${totalBatches} (${batch.length} rows)`)
+        }
+
+        console.log(`[v0] Successfully inserted all ${records.length} rows`)
+
+        // Commit transaction
+        await client.query("COMMIT")
+        console.log("[v0] Transaction committed successfully")
       } catch (insertError) {
-        console.error("[v0] Batch insert error:", insertError)
-        return NextResponse.json({ error: "Failed to insert data" }, { status: 500 })
+        // Rollback on any insert error
+        await client.query("ROLLBACK")
+        console.error("[v0] Insert error, rolled back transaction:", insertError)
+
+        // Cleanup: delete dataset record since data insertion failed
+        await supabase.from("datasets").delete().eq("id", dataset.id)
+
+        return NextResponse.json(
+          {
+            error: "Failed to insert data into table",
+            details: insertError instanceof Error ? insertError.message : "Unknown error",
+          },
+          { status: 500 },
+        )
       }
+    } catch (tableError) {
+      console.error("[v0] Table creation error:", tableError)
+
+      // Cleanup: delete dataset record since table creation failed
+      await supabase.from("datasets").delete().eq("id", dataset.id)
+
+      return NextResponse.json(
+        {
+          error: "Failed to create data table",
+          details: tableError instanceof Error ? tableError.message : "Unknown error",
+        },
+        { status: 500 },
+      )
+    } finally {
+      // Always release the client back to the pool
+      client.release()
     }
 
     return NextResponse.json({
