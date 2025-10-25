@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
       durationMs,
     })
   } catch (error) {
-    console.error("[v0] SQL execution error:", error)
+    console.error("SQL execution error:", error)
     return NextResponse.json({ error: "Failed to execute query" }, { status: 500 })
   }
 }

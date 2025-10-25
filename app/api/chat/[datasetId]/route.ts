@@ -9,25 +9,25 @@ export const maxDuration = 180
 
 export async function POST(req: Request, { params }: { params: Promise<{ datasetId: string }> }) {
   try {
-    console.log("[v0] Chat API route called")
+    console.log("Chat API route called")
 
     // Extract datasetId from route params
     const { datasetId } = await params
-    console.log("[v0] DatasetId from route params:", datasetId)
+    console.log("DatasetId from route params:", datasetId)
 
     if (!datasetId) {
-      console.log("[v0] Missing datasetId in route params")
+      console.log("Missing datasetId in route params")
       return new Response("Missing datasetId", { status: 400 })
     }
 
     const body = await req.json()
-    console.log("[v0] Request body keys:", Object.keys(body))
+    console.log("Request body keys:", Object.keys(body))
 
     let messages = body.messages
     const mode = body.mode || "normal" // "normal" or "deep-dive"
     const isDeepDive = mode === "deep-dive"
 
-    console.log("[v0] Chat mode:", mode)
+    console.log("Chat mode:", mode)
 
     if (!messages || !Array.isArray(messages)) {
       return new Response("Invalid messages format", { status: 400 })
@@ -42,11 +42,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
       .single()
 
     if (datasetError || !dataset) {
-      console.error("[v0] Dataset fetch error:", datasetError)
+      console.error("Dataset fetch error:", datasetError)
       return new Response("Dataset not found", { status: 404 })
     }
 
-    console.log("[v0] Dataset found:", dataset.table_name)
+    console.log("Dataset found:", dataset.table_name)
 
     const isInitMessage =
       messages.length === 1 &&
@@ -54,7 +54,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
       messages[0].parts?.some((p: any) => p.type === "text" && p.text === "__INIT__")
 
     if (isInitMessage) {
-      console.log("[v0] Detected init message, replacing with greeting prompt")
+      console.log("Detected init message, replacing with greeting prompt")
 
       // Fetch schema information to provide upfront (avoid 17 SQL queries)
       const pool = getPostgresPool()
@@ -102,8 +102,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
           reasoning: z.string().describe("What insight this query reveals (1 sentence)"),
         }),
         execute: async ({ query, reasoning }) => {
-          console.log("[v0] Executing SQL:", query)
-          console.log("[v0] Reasoning:", reasoning)
+          console.log("Executing SQL:", query)
+          console.log("Reasoning:", reasoning)
 
           const startTime = Date.now()
 
@@ -128,7 +128,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
             }).select('id').single()
 
             if (insertError) {
-              console.error("[v0] Error inserting run:", insertError)
+              console.error("Error inserting run:", insertError)
             }
 
             const queryId = runData?.id
@@ -144,7 +144,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
               reasoning,
             }
           } catch (error: any) {
-            console.error("[v0] SQL execution error:", error)
+            console.error("SQL execution error:", error)
             const durationMs = Date.now() - startTime
 
             // Store failed query
@@ -181,7 +181,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
           yAxisLabel: z.string().optional().describe("Custom y-axis label (default: yField name)"),
         }),
         execute: async ({ queryId, chartType, xField, yField, title, xAxisLabel, yAxisLabel }) => {
-          console.log("[v0] Generating chart:", chartType, "for queryId:", queryId)
+          console.log("Generating chart:", chartType, "for queryId:", queryId)
 
           // Fetch data from runs table using queryId
           const supabaseClient = await createServerClient()
@@ -192,7 +192,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
             .single()
 
           if (fetchError || !runData) {
-            console.error("[v0] Error fetching query data:", fetchError)
+            console.error("Error fetching query data:", fetchError)
             return {
               success: false,
               error: "Failed to fetch query data for visualization",
@@ -208,26 +208,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
             }
           }
 
-          console.log("[v0] Fetched", data.length, "rows for visualization")
+          console.log("Fetched", data.length, "rows for visualization")
 
-          // Base configuration for professional styling
-          const baseConfig = {
-            axis: {
-              labelFontSize: 11,
-              titleFontSize: 13,
-              labelFont: "system-ui, -apple-system, sans-serif",
-              titleFont: "system-ui, -apple-system, sans-serif",
-            },
-            legend: {
-              labelFontSize: 11,
-              titleFontSize: 12,
-            },
-            title: {
-              fontSize: 16,
-              font: "system-ui, -apple-system, sans-serif",
-              anchor: "start",
-              fontWeight: 600,
-            },
+          // Use shared configuration for consistency
+          const { VEGA_BASE_CONFIG, CHART_CONSTRAINTS } = await import("@/lib/vega-config")
+
+          // Validate data volume
+          if (data.length > CHART_CONSTRAINTS.MAX_DATA_POINTS) {
+            return {
+              success: false,
+              error: `Dataset too large (${data.length} points). Maximum is ${CHART_CONSTRAINTS.MAX_DATA_POINTS}. Consider aggregating data first.`,
+            }
           }
 
           // Determine field types (simple heuristic)
@@ -235,18 +226,25 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
           const isXTemporal = !isNaN(Date.parse(sampleValue))
           const xType = isXTemporal ? "temporal" : typeof sampleValue === "number" ? "quantitative" : "nominal"
 
+          // Base spec with accessibility and data handling best practices
           let spec: any = {
             $schema: "https://vega.github.io/schema/vega-lite/v5.json",
             title,
-            width: 550,
-            height: 350,
+            description: title, // For ARIA labels and screen readers
+            width: CHART_CONSTRAINTS.DEFAULT_WIDTH,
+            height: CHART_CONSTRAINTS.DEFAULT_HEIGHT,
             data: { values: data },
-            config: baseConfig,
+            config: VEGA_BASE_CONFIG,
           }
 
-          // Chart-specific configurations
+          // Chart-specific configurations with invalid data handling
           if (chartType === "bar") {
-            spec.mark = { type: "bar", cornerRadiusEnd: 4, tooltip: true }
+            spec.mark = {
+              type: "bar",
+              cornerRadiusEnd: 4,
+              tooltip: true,
+              invalid: "filter", // Exclude null/NaN values
+            }
             spec.encoding = {
               x: {
                 field: xField,
@@ -264,9 +262,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
                 { field: yField, type: "quantitative", format: ",.0f" },
               ],
             }
-            spec.config.bar = { discreteBandSize: 40 }
           } else if (chartType === "line") {
-            spec.mark = { type: "line", point: true, tooltip: true, strokeWidth: 2 }
+            spec.mark = {
+              type: "line",
+              point: true,
+              tooltip: true,
+              strokeWidth: 2,
+              invalid: "break-paths-show-domains", // Break line at nulls but keep in scale
+            }
             spec.encoding = {
               x: {
                 field: xField,
@@ -285,7 +288,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
               ],
             }
           } else if (chartType === "scatter") {
-            spec.mark = { type: "circle", size: 80, opacity: 0.7, tooltip: true }
+            spec.mark = {
+              type: "circle",
+              size: 80,
+              opacity: 0.7,
+              tooltip: true,
+              invalid: "filter", // Exclude null/NaN values
+            }
             spec.encoding = {
               x: {
                 field: xField,
@@ -304,7 +313,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
               ],
             }
           } else if (chartType === "area") {
-            spec.mark = { type: "area", line: true, point: false, tooltip: true }
+            spec.mark = {
+              type: "area",
+              line: true,
+              point: false,
+              tooltip: true,
+              invalid: "break-paths-show-domains", // Break area at nulls but keep in scale
+            }
             spec.encoding = {
               x: {
                 field: xField,
@@ -323,7 +338,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
               ],
             }
           } else if (chartType === "pie") {
-            spec.mark = { type: "arc", tooltip: true }
+            spec.mark = {
+              type: "arc",
+              tooltip: true,
+              invalid: "filter", // Exclude null/NaN values
+            }
             spec.encoding = {
               theta: { field: yField, type: "quantitative" },
               color: {
@@ -727,7 +746,7 @@ CRITICAL RULES:
 
 Be autonomous, thorough, and insight-driven. Use your full tool budget to deliver comprehensive analysis.`
 
-    console.log("[v0] Starting streamText with", messages.length, "messages", isDeepDive ? "(DEEP DIVE MODE)" : "(NORMAL MODE)")
+    console.log("Starting streamText with", messages.length, "messages", isDeepDive ? "(DEEP DIVE MODE)" : "(NORMAL MODE)")
 
     const result = streamText({
       model: openai(isDeepDive ? "gpt-5" : "gpt-4o"),
@@ -736,10 +755,10 @@ Be autonomous, thorough, and insight-driven. Use your full tool budget to delive
       tools,
       stopWhen: stepCountIs(isDeepDive ? 40 : 10),
       onStepFinish: ({ toolCalls, toolResults }) => {
-        console.log("[v0] Step finished", isDeepDive ? `(Deep Dive)` : "")
+        console.log("Step finished", isDeepDive ? `(Deep Dive)` : "")
         if (toolCalls) {
           console.log(
-            "[v0] Tool calls:",
+            "Tool calls:",
             toolCalls.map((tc) => tc.toolName),
           )
         }
@@ -747,7 +766,7 @@ Be autonomous, thorough, and insight-driven. Use your full tool budget to delive
       onFinish: async ({ text, finishReason }) => {
         // Capture AI response for report generation (especially valuable for deep-dive mode)
         if (text && text.trim().length > 0) {
-          console.log("[v0] Capturing AI response for report generation:", text.substring(0, 100) + "...")
+          console.log("Capturing AI response for report generation:", text.substring(0, 100) + "...")
 
           try {
             const supabaseFinish = await createServerClient()
@@ -761,9 +780,9 @@ Be autonomous, thorough, and insight-driven. Use your full tool budget to delive
               insight: isDeepDive ? "Deep-dive analysis summary" : "Analysis summary",
             })
 
-            console.log("[v0] AI response stored successfully")
+            console.log("AI response stored successfully")
           } catch (error) {
-            console.error("[v0] Failed to store AI response:", error)
+            console.error("Failed to store AI response:", error)
             // Don't throw - we don't want to break the response stream
           }
         }
@@ -772,7 +791,7 @@ Be autonomous, thorough, and insight-driven. Use your full tool budget to delive
 
     return result.toUIMessageStreamResponse()
   } catch (error: any) {
-    console.error("[v0] Chat API error:", error)
+    console.error("Chat API error:", error)
     return new Response(error.message || "Internal server error", {
       status: 500,
     })

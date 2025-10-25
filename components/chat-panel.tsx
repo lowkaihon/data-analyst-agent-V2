@@ -40,31 +40,31 @@ export function ChatPanel({ datasetId, onGenerateReport, isGeneratingReport, onS
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const prevStatusRef = useRef<string>("ready")
 
-  console.log("[v0] ChatPanel initialized with datasetId:", datasetId)
+  console.log("ChatPanel initialized with datasetId:", datasetId)
 
   const { messages, sendMessage, status } = useChat({
     transport: new DefaultChatTransport({
       api: `/api/chat/${datasetId}`,
     }),
     onError: (error) => {
-      console.error("[v0] Chat error:", error)
+      console.error("Chat error:", error)
       setError(error.message)
     },
     onFinish: (message) => {
-      console.log("[v0] Chat finished:", message)
+      console.log("Chat finished:", message)
     },
   })
 
-  console.log("[v0] Chat status:", status, "Messages count:", messages.length)
+  console.log("Chat status:", status, "Messages count:", messages.length)
 
   useEffect(() => {
     if (!hasInitializedRef.current && status === "ready" && messages.length === 0) {
-      console.log("[v0] Sending initial greeting message")
+      console.log("Sending initial greeting message")
       hasInitializedRef.current = true
       try {
         sendMessage({ text: "__INIT__" }, { body: { mode: "normal" } })
       } catch (err) {
-        console.error("[v0] Error sending init message:", err)
+        console.error("Error sending init message:", err)
         setError(err instanceof Error ? err.message : "Failed to send initial message")
       }
     }
@@ -78,7 +78,7 @@ export function ChatPanel({ datasetId, onGenerateReport, isGeneratingReport, onS
   // Detect when streaming ends and trigger chart refresh
   useEffect(() => {
     if (prevStatusRef.current === "streaming" && status === "ready") {
-      console.log("[v0] Stream ended, notifying parent component")
+      console.log("Stream ended, notifying parent component")
       onStreamEnd?.()
     }
     prevStatusRef.current = status
@@ -88,13 +88,13 @@ export function ChatPanel({ datasetId, onGenerateReport, isGeneratingReport, onS
     e.preventDefault()
     if (!input.trim() || status === "streaming" || status === "submitted") return
 
-    console.log("[v0] Sending message:", input, "with datasetId:", datasetId)
+    console.log("Sending message:", input, "with datasetId:", datasetId)
     try {
       setError(null)
       sendMessage({ text: input }, { body: { mode: "normal" } })
       setInput("")
     } catch (err) {
-      console.error("[v0] Error sending message:", err)
+      console.error("Error sending message:", err)
       setError(err instanceof Error ? err.message : "Failed to send message")
     }
   }
@@ -114,14 +114,14 @@ export function ChatPanel({ datasetId, onGenerateReport, isGeneratingReport, onS
       return
     }
 
-    console.log("[v0] Starting deep dive analysis with mode=deep-dive")
+    console.log("Starting deep dive analysis with mode=deep-dive")
     try {
       setError(null)
       setShowDeepDiveDialog(false)
       // Pass mode in sendMessage options (correct AI SDK pattern)
       sendMessage({ text: deepDivePrompt }, { body: { mode: "deep-dive" } })
     } catch (err) {
-      console.error("[v0] Error starting deep dive:", err)
+      console.error("Error starting deep dive:", err)
       setError(err instanceof Error ? err.message : "Failed to start deep dive")
     }
   }

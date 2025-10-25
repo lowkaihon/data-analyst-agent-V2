@@ -11,13 +11,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const { error } = await supabase.from("runs").update({ pinned }).eq("id", id)
 
     if (error) {
-      console.error("[v0] Pin update error:", error)
+      console.error("Pin update error:", error)
       return NextResponse.json({ error: "Failed to update pin status" }, { status: 500 })
     }
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error("[v0] Pin error:", error)
+    console.error("Pin error:", error)
     return NextResponse.json({ error: "Failed to update pin status" }, { status: 500 })
   }
 }

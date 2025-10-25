@@ -104,7 +104,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ columns: columnStats })
   } catch (error) {
-    console.error("[v0] Schema error:", error)
+    console.error("Schema error:", error)
     return NextResponse.json({ error: "Failed to fetch schema" }, { status: 500 })
   }
 }

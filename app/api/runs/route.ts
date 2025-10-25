@@ -22,13 +22,13 @@ export async function GET(req: NextRequest) {
     const { data, error } = await query
 
     if (error) {
-      console.error("[v0] Runs fetch error:", error)
+      console.error("Runs fetch error:", error)
       return NextResponse.json({ error: "Failed to fetch runs" }, { status: 500 })
     }
 
     return NextResponse.json({ runs: data || [] })
   } catch (error) {
-    console.error("[v0] Runs error:", error)
+    console.error("Runs error:", error)
     return NextResponse.json({ error: "Failed to fetch runs" }, { status: 500 })
   }
 }

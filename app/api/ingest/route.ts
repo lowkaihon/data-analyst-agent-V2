@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (parseError || records.length === 0) {
-      console.error("[v0] CSV parse error:", parseError)
+      console.error("CSV parse error:", parseError)
       return NextResponse.json(
         {
           error: "Failed to parse CSV file. Please ensure it's a valid CSV with comma, semicolon, or tab delimiters.",
@@ -111,7 +111,7 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (datasetError) {
-      console.error("[v0] Dataset creation error:", datasetError)
+      console.error("Dataset creation error:", datasetError)
       return NextResponse.json({ error: "Failed to create dataset" }, { status: 500 })
     }
 
@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
     try {
       // Create table
       await client.query(createTableSQL)
-      console.log("[v0] Table created successfully:", tableName)
+      console.log("Table created successfully:", tableName)
 
       // Start transaction for atomic inserts
       await client.query("BEGIN")
@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
         const batchSize = Math.min(dynamicBatchSize, 1000) // Cap at 1000 for reasonable query size
 
         console.log(
-          `[v0] Inserting ${records.length} rows in batches of ${batchSize} (${columnNames.length} columns)`,
+          `Inserting ${records.length} rows in batches of ${batchSize} (${columnNames.length} columns)`,
         )
 
         // Insert in batches
@@ -165,18 +165,18 @@ export async function POST(req: NextRequest) {
 
           const batchNumber = Math.floor(i / batchSize) + 1
           const totalBatches = Math.ceil(records.length / batchSize)
-          console.log(`[v0] Inserted batch ${batchNumber}/${totalBatches} (${batch.length} rows)`)
+          console.log(`Inserted batch ${batchNumber}/${totalBatches} (${batch.length} rows)`)
         }
 
-        console.log(`[v0] Successfully inserted all ${records.length} rows`)
+        console.log(`Successfully inserted all ${records.length} rows`)
 
         // Commit transaction
         await client.query("COMMIT")
-        console.log("[v0] Transaction committed successfully")
+        console.log("Transaction committed successfully")
       } catch (insertError) {
         // Rollback on any insert error
         await client.query("ROLLBACK")
-        console.error("[v0] Insert error, rolled back transaction:", insertError)
+        console.error("Insert error, rolled back transaction:", insertError)
 
         // Cleanup: delete dataset record since data insertion failed
         await supabase.from("datasets").delete().eq("id", dataset.id)
@@ -190,7 +190,7 @@ export async function POST(req: NextRequest) {
         )
       }
     } catch (tableError) {
-      console.error("[v0] Table creation error:", tableError)
+      console.error("Table creation error:", tableError)
 
       // Cleanup: delete dataset record since table creation failed
       await supabase.from("datasets").delete().eq("id", dataset.id)
@@ -214,7 +214,7 @@ export async function POST(req: NextRequest) {
       columnCount: columns.length,
     })
   } catch (error) {
-    console.error("[v0] Ingest error:", error)
+    console.error("Ingest error:", error)
     return NextResponse.json({ error: "Failed to process file" }, { status: 500 })
   }
 }

@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (datasetError || !dataset) {
-      console.error("[v0] Dataset fetch error:", datasetError)
+      console.error("Dataset fetch error:", datasetError)
       return NextResponse.json({ error: "Dataset not found" }, { status: 404 })
     }
 
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
       .order("time_iso", { ascending: true })
 
     if (runsError) {
-      console.error("[v0] Runs fetch error:", runsError)
+      console.error("Runs fetch error:", runsError)
       return NextResponse.json({ error: "Failed to fetch analysis data" }, { status: 500 })
     }
 
@@ -237,7 +237,7 @@ Use proper markdown formatting with headers, lists, bold for emphasis, and table
       markdown: result.text,
     })
   } catch (error) {
-    console.error("[v0] Report generation error:", error)
+    console.error("Report generation error:", error)
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Failed to generate report",

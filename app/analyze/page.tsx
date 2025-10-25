@@ -43,10 +43,10 @@ function AnalyzeContent() {
         throw new Error(result.error || "Failed to generate report")
       }
 
-      console.log("[v0] Report generated successfully")
+      console.log("Report generated successfully")
       setReportContent(result) // { title, markdown }
     } catch (err) {
-      console.error("[v0] Failed to generate report:", err)
+      console.error("Failed to generate report:", err)
       // Error will be shown in UI via report tab
     } finally {
       setIsGeneratingReport(false)
@@ -55,7 +55,7 @@ function AnalyzeContent() {
 
   // Handle AI stream end - trigger artifact refresh (Charts and SQL tabs)
   const handleStreamEnd = () => {
-    console.log("[v0] AI stream ended, triggering artifact refresh")
+    console.log("AI stream ended, triggering artifact refresh")
     setArtifactRefreshTrigger((prev) => prev + 1)
   }
 

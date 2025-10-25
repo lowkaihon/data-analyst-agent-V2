@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
     const { data, error } = await supabase.from(tableName).select("*").limit(100)
 
     if (error) {
-      console.error("[v0] Preview fetch error:", error)
+      console.error("Preview fetch error:", error)
       return NextResponse.json({ error: "Failed to fetch preview data" }, { status: 500 })
     }
 
@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
       rows: data,
     })
   } catch (error) {
-    console.error("[v0] Preview error:", error)
+    console.error("Preview error:", error)
     return NextResponse.json({ error: "Failed to fetch preview" }, { status: 500 })
   }
 }

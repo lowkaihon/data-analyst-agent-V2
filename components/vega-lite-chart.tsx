@@ -1,9 +1,12 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import embed from "vega-embed"
 import type { VisualizationSpec } from "vega-embed"
+import type { View } from "vega"
 import { cn } from "@/lib/utils"
+import { VEGA_EMBED_OPTIONS } from "@/lib/vega-config"
+import { ensureDescription } from "@/lib/vega-validator"
 
 interface VegaLiteChartProps {
   spec: VisualizationSpec
@@ -12,21 +15,35 @@ interface VegaLiteChartProps {
 
 export function VegaLiteChart({ spec, className }: VegaLiteChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const viewRef = useRef<View | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!containerRef.current) return
 
-    // Create a responsive version of the spec with rotated x-axis labels
+    let isCleanedUp = false
+
+    // Ensure spec has description for accessibility (ARIA label)
+    const accessibleSpec = ensureDescription(
+      spec,
+      (spec as any).title || "Data visualization"
+    )
+
+    // Create a responsive version of the spec
+    // Use "container" width for proper zoom scaling
     const responsiveSpec: VisualizationSpec = {
-      ...spec,
-      width: "container" as const,
+      ...accessibleSpec,
+      width: "container" as any,
       autosize: {
         type: "fit" as const,
         contains: "padding" as const,
-        resize: true,
       },
       config: {
         ...((spec as any).config || {}),
+        view: {
+          ...((spec as any).config?.view || {}),
+          continuousWidth: 550, // Default width when container can't be determined
+        },
         axisX: {
           ...((spec as any).config?.axisX || {}),
           labelAngle: -45,
@@ -35,40 +52,112 @@ export function VegaLiteChart({ spec, className }: VegaLiteChartProps) {
       },
     } as VisualizationSpec
 
-    // Embed the Vega-Lite spec with responsive sizing
-    const result = embed(containerRef.current, responsiveSpec, {
-      actions: {
-        export: true,
-        source: false,
-        compiled: false,
-        editor: false,
-      },
-      renderer: "canvas",
-    })
+    // Embed the chart with error handling
+    const embedChart = async () => {
+      try {
+        if (!containerRef.current || isCleanedUp) return
 
-    // Use ResizeObserver to detect container size changes (including zoom)
-    const resizeObserver = new ResizeObserver(() => {
-      if (containerRef.current) {
-        embed(containerRef.current, responsiveSpec, {
-          actions: {
-            export: true,
-            source: false,
-            compiled: false,
-            editor: false,
-          },
-          renderer: "canvas",
+        const result = await embed(
+          containerRef.current,
+          responsiveSpec,
+          VEGA_EMBED_OPTIONS
+        )
+
+        if (isCleanedUp) {
+          // Component unmounted during embed - cleanup immediately
+          result.finalize()
+          return
+        }
+
+        // Store view reference for efficient resize handling
+        viewRef.current = result.view
+
+        // ResizeObserver for container resize events
+        // This handles window resize, flex layout changes, etc.
+        const resizeObserver = new ResizeObserver((entries) => {
+          if (!viewRef.current || isCleanedUp) return
+
+          for (const entry of entries) {
+            const newWidth = entry.contentRect.width
+            if (newWidth > 0) {
+              // Trigger Vega's internal resize handling
+              // With "container" width, this properly recalculates the chart
+              viewRef.current.resize().run()
+            }
+          }
         })
+
+        if (containerRef.current) {
+          resizeObserver.observe(containerRef.current)
+        }
+
+        // Handle window resize for zoom changes
+        // Zoom changes trigger window resize events
+        const handleWindowResize = () => {
+          if (viewRef.current && !isCleanedUp) {
+            viewRef.current.resize().run()
+          }
+        }
+
+        window.addEventListener('resize', handleWindowResize)
+
+        return { result, resizeObserver, handleWindowResize }
+      } catch (err) {
+        console.error("[VegaLiteChart] Embed error:", err)
+        setError(err instanceof Error ? err.message : "Failed to render chart")
+        return null
       }
-    })
+    }
 
-    resizeObserver.observe(containerRef.current)
+    // Execute embed
+    const embedPromise = embedChart()
 
-    // Cleanup function
+    // Cleanup function - properly handle async finalization
     return () => {
-      resizeObserver.disconnect()
-      result.then((res) => res.finalize())
+      isCleanedUp = true
+
+      embedPromise.then((refs) => {
+        if (refs) {
+          // Disconnect observer first
+          refs.resizeObserver.disconnect()
+
+          // Remove window resize listener
+          window.removeEventListener('resize', refs.handleWindowResize)
+
+          // Then finalize view - this is async but we await in the promise chain
+          // Prevents race condition where finalize might not complete
+          refs.result.finalize()
+        }
+
+        // Clear view reference
+        viewRef.current = null
+      })
     }
   }, [spec])
 
-  return <div ref={containerRef} className={cn("min-w-0 overflow-hidden", className)} />
+  // Error fallback UI
+  if (error) {
+    return (
+      <div
+        className={cn(
+          "flex min-h-[200px] items-center justify-center rounded border border-destructive/50 bg-destructive/10 p-4",
+          className
+        )}
+      >
+        <div className="text-center">
+          <p className="text-sm font-medium text-destructive">Failed to render chart</p>
+          <p className="mt-1 text-xs text-muted-foreground">{error}</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className={cn("min-w-0 overflow-hidden w-full", className)}
+      role="img"
+      aria-label={(spec as any).description || (spec as any).title || "Data visualization"}
+    />
+  )
 }

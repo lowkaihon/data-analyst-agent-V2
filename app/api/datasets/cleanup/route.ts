@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
       .lt("created_at", cutoffTime)
 
     if (fetchError) {
-      console.error("[v0] Cleanup fetch error:", fetchError)
+      console.error("Cleanup fetch error:", fetchError)
       return NextResponse.json({ error: "Failed to fetch old datasets" }, { status: 500 })
     }
 
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
           deletedCount++
         }
       } catch (err) {
-        console.error(`[v0] Failed to delete dataset ${dataset.id}:`, err)
+        console.error(`Failed to delete dataset ${dataset.id}:`, err)
       }
     }
 
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
       deleted: deletedCount,
     })
   } catch (error) {
-    console.error("[v0] Cleanup error:", error)
+    console.error("Cleanup error:", error)
     return NextResponse.json({ error: "Failed to clean up datasets" }, { status: 500 })
   }
 }
