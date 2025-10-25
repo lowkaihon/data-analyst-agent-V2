@@ -15,8 +15,8 @@ function AnalyzeContent() {
   const [reportContent, setReportContent] = useState<{ title: string; markdown: string } | null>(null)
   const [isGeneratingReport, setIsGeneratingReport] = useState(false)
 
-  // Chart refresh trigger - increments when AI streaming ends
-  const [chartRefreshTrigger, setChartRefreshTrigger] = useState(0)
+  // Artifact refresh trigger - increments when AI streaming ends (refreshes Charts and SQL tabs)
+  const [artifactRefreshTrigger, setArtifactRefreshTrigger] = useState(0)
 
   useEffect(() => {
     if (datasetId) {
@@ -53,10 +53,10 @@ function AnalyzeContent() {
     }
   }
 
-  // Handle AI stream end - trigger chart refresh
+  // Handle AI stream end - trigger artifact refresh (Charts and SQL tabs)
   const handleStreamEnd = () => {
-    console.log("[v0] AI stream ended, triggering chart refresh")
-    setChartRefreshTrigger((prev) => prev + 1)
+    console.log("[v0] AI stream ended, triggering artifact refresh")
+    setArtifactRefreshTrigger((prev) => prev + 1)
   }
 
   if (!datasetId) {
@@ -85,7 +85,7 @@ function AnalyzeContent() {
             reportContent={reportContent}
             onGenerateReport={handleGenerateReport}
             isGeneratingReport={isGeneratingReport}
-            chartRefreshTrigger={chartRefreshTrigger}
+            artifactRefreshTrigger={artifactRefreshTrigger}
           />
         </ResizablePanel>
       </ResizablePanelGroup>

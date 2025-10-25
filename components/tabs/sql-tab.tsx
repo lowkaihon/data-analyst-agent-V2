@@ -1,21 +1,24 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Loader2, Copy, Pin, PinOff } from "lucide-react"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Loader2, Copy, Pin, ChevronDown, ChevronUp } from "lucide-react"
 import type { Run } from "@/lib/types"
 
 interface SQLTabProps {
   datasetId: string
+  refreshTrigger?: number
 }
 
-export function SQLTab({ datasetId }: SQLTabProps) {
+export function SQLTab({ datasetId, refreshTrigger }: SQLTabProps) {
   const [runs, setRuns] = useState<Run[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [expandedResults, setExpandedResults] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     async function fetchRuns() {
@@ -36,7 +39,7 @@ export function SQLTab({ datasetId }: SQLTabProps) {
     }
 
     fetchRuns()
-  }, [datasetId])
+  }, [datasetId, refreshTrigger])
 
   const handleCopy = (sql: string) => {
     navigator.clipboard.writeText(sql)
@@ -56,6 +59,18 @@ export function SQLTab({ datasetId }: SQLTabProps) {
     }
   }
 
+  const toggleResultsExpanded = (runId: string) => {
+    setExpandedResults((prev) => {
+      const newSet = new Set(prev)
+      if (newSet.has(runId)) {
+        newSet.delete(runId)
+      } else {
+        newSet.add(runId)
+      }
+      return newSet
+    })
+  }
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -73,8 +88,8 @@ export function SQLTab({ datasetId }: SQLTabProps) {
   }
 
   return (
-    <ScrollArea className="h-full">
-      <div className="p-4">
+    <div className="flex flex-col h-full">
+      <div className="flex-1 overflow-auto p-4">
         <div className="mb-4">
           <h3 className="text-lg font-semibold">SQL Query History</h3>
           <p className="text-sm text-muted-foreground">{runs.length} queries executed</p>
@@ -85,39 +100,109 @@ export function SQLTab({ datasetId }: SQLTabProps) {
             <p className="text-sm text-muted-foreground">No SQL queries yet</p>
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 pb-4">
             {runs.map((run) => (
-              <Card key={run.id}>
-                <CardHeader className="pb-3">
+              <Card key={run.id} className="gap-0">
+                <CardHeader>
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-2">
                       <Badge variant={run.status === "success" ? "default" : "destructive"}>{run.status}</Badge>
-                      {run.pinned && <Pin className="h-3 w-3 fill-current text-primary" />}
                     </div>
                     <div className="flex items-center gap-1">
                       <Button variant="ghost" size="icon" onClick={() => handleCopy(run.sql || "")}>
                         <Copy className="h-4 w-4" />
                       </Button>
                       <Button variant="ghost" size="icon" onClick={() => handleTogglePin(run.id, run.pinned)}>
-                        {run.pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
+                        {run.pinned ? (
+                          <Pin className="h-4 w-4 fill-current text-primary" />
+                        ) : (
+                          <Pin className="h-4 w-4" />
+                        )}
                       </Button>
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent>
                   <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded bg-muted p-3 text-xs font-mono">{run.sql}</pre>
+                  {run.insight && (
+                    <p className="mt-2 text-sm text-muted-foreground italic">
+                      {run.insight}
+                    </p>
+                  )}
                   <div className="mt-2 flex items-center gap-4 text-xs text-muted-foreground">
                     <span>{run.rows} rows</span>
                     <span>{run.duration_ms}ms</span>
                     <span>{new Date(run.time_iso).toLocaleString()}</span>
                   </div>
                   {run.error && <p className="mt-2 text-xs text-destructive">{run.error}</p>}
+
+                  {run.status === "success" && run.sample && Array.isArray(run.sample) && run.sample.length > 0 && (
+                    <Collapsible
+                      open={expandedResults.has(run.id)}
+                      onOpenChange={() => toggleResultsExpanded(run.id)}
+                      className="mt-3"
+                    >
+                      <CollapsibleTrigger asChild>
+                        <Button variant="outline" size="sm" className="w-full">
+                          {expandedResults.has(run.id) ? (
+                            <ChevronUp className="mr-2 h-4 w-4" />
+                          ) : (
+                            <ChevronDown className="mr-2 h-4 w-4" />
+                          )}
+                          {expandedResults.has(run.id) ? "Hide" : "View"} Results ({run.rows} rows)
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="mt-2">
+                        <div className="rounded border">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                {(() => {
+                                  // Use stored column order if available, otherwise fallback to Object.keys
+                                  const columns = run.columns && run.columns.length > 0
+                                    ? run.columns
+                                    : Object.keys(run.sample[0])
+                                  return columns.map((column) => (
+                                    <TableHead key={column}>{column}</TableHead>
+                                  ))
+                                })()}
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {(() => {
+                                // Use stored column order if available, otherwise fallback to Object.keys
+                                const columns = run.columns && run.columns.length > 0
+                                  ? run.columns
+                                  : Object.keys(run.sample[0])
+                                return run.sample.map((row: any, rowIndex: number) => (
+                                  <TableRow key={rowIndex}>
+                                    {columns.map((column) => {
+                                      const value = row[column]
+                                      return (
+                                        <TableCell key={column}>
+                                          {value === null || value === undefined
+                                            ? <span className="text-muted-foreground italic">null</span>
+                                            : typeof value === "object"
+                                              ? JSON.stringify(value)
+                                              : String(value)}
+                                        </TableCell>
+                                      )
+                                    })}
+                                  </TableRow>
+                                ))
+                              })()}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  )}
                 </CardContent>
               </Card>
             ))}
           </div>
         )}
       </div>
-    </ScrollArea>
+    </div>
   )
 }

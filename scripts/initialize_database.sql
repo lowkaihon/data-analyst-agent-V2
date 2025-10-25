@@ -25,15 +25,17 @@ CREATE TABLE IF NOT EXISTS runs (
   dataset_id UUID REFERENCES datasets(id) ON DELETE CASCADE,
   turn_id UUID REFERENCES chat_turns(id) ON DELETE SET NULL,
   time_iso TIMESTAMPTZ DEFAULT NOW(),
-  type TEXT NOT NULL CHECK (type IN ('sql', 'chart', 'validate', 'summarize')),
+  type TEXT NOT NULL CHECK (type IN ('sql', 'chart', 'validate', 'summarize', 'analysis_summary')),
   status TEXT NOT NULL CHECK (status IN ('success', 'failed')),
   sql TEXT,
   rows INTEGER,
   duration_ms INTEGER,
   error TEXT,
   insight TEXT,
+  ai_response TEXT,
   chart_spec JSONB,
   sample JSONB,
+  columns TEXT[],
   pinned BOOLEAN DEFAULT FALSE
 );
 

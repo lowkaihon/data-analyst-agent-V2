@@ -46,8 +46,26 @@ export function VegaLiteChart({ spec, className }: VegaLiteChartProps) {
       renderer: "canvas",
     })
 
+    // Use ResizeObserver to detect container size changes (including zoom)
+    const resizeObserver = new ResizeObserver(() => {
+      if (containerRef.current) {
+        embed(containerRef.current, responsiveSpec, {
+          actions: {
+            export: true,
+            source: false,
+            compiled: false,
+            editor: false,
+          },
+          renderer: "canvas",
+        })
+      }
+    })
+
+    resizeObserver.observe(containerRef.current)
+
     // Cleanup function
     return () => {
+      resizeObserver.disconnect()
       result.then((res) => res.finalize())
     }
   }, [spec])

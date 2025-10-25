@@ -15,10 +15,10 @@ interface DatasetTabsProps {
   reportContent?: { title: string; markdown: string } | null
   onGenerateReport?: () => void
   isGeneratingReport?: boolean
-  chartRefreshTrigger?: number
+  artifactRefreshTrigger?: number
 }
 
-export function DatasetTabs({ datasetId, reportContent, onGenerateReport, isGeneratingReport, chartRefreshTrigger }: DatasetTabsProps) {
+export function DatasetTabs({ datasetId, reportContent, onGenerateReport, isGeneratingReport, artifactRefreshTrigger }: DatasetTabsProps) {
   const [activeTab, setActiveTab] = useState("preview")
 
   return (
@@ -62,10 +62,10 @@ export function DatasetTabs({ datasetId, reportContent, onGenerateReport, isGene
             <SchemaTab datasetId={datasetId} />
           </TabsContent>
           <TabsContent value="sql" className="h-full m-0">
-            <SQLTab datasetId={datasetId} />
+            <SQLTab datasetId={datasetId} refreshTrigger={artifactRefreshTrigger} />
           </TabsContent>
           <TabsContent value="charts" className="h-full m-0">
-            <ChartsTab datasetId={datasetId} refreshTrigger={chartRefreshTrigger} />
+            <ChartsTab datasetId={datasetId} refreshTrigger={artifactRefreshTrigger} />
           </TabsContent>
           <TabsContent value="report" className="h-full m-0">
             <ReportTab

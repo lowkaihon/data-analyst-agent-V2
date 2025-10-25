@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Loader2 } from "lucide-react"
 import type { ColumnStat } from "@/lib/types"
@@ -53,8 +52,8 @@ export function SchemaTab({ datasetId }: SchemaTabProps) {
   }
 
   return (
-    <ScrollArea className="h-full">
-      <div className="p-4">
+    <div className="flex flex-col h-full">
+      <div className="flex-1 overflow-auto p-4 pb-8">
         <div className="mb-4">
           <h3 className="text-lg font-semibold">Dataset Schema</h3>
           <p className="text-sm text-muted-foreground">{columns.length} columns</p>
@@ -84,6 +83,6 @@ export function SchemaTab({ datasetId }: SchemaTabProps) {
           </TableBody>
         </Table>
       </div>
-    </ScrollArea>
+    </div>
   )
 }

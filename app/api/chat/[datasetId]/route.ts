@@ -124,6 +124,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
               duration_ms: durationMs,
               insight: reasoning,
               sample: result.rows, // Store actual results as JSONB
+              columns: result.fields.map((f: any) => f.name), // Store column order from PostgreSQL
             }).select('id').single()
 
             if (insertError) {
@@ -741,6 +742,30 @@ Be autonomous, thorough, and insight-driven. Use your full tool budget to delive
             "[v0] Tool calls:",
             toolCalls.map((tc) => tc.toolName),
           )
+        }
+      },
+      onFinish: async ({ text, finishReason }) => {
+        // Capture AI response for report generation (especially valuable for deep-dive mode)
+        if (text && text.trim().length > 0) {
+          console.log("[v0] Capturing AI response for report generation:", text.substring(0, 100) + "...")
+
+          try {
+            const supabaseFinish = await createServerClient()
+
+            // Store the AI response as an analysis_summary run
+            await supabaseFinish.from("runs").insert({
+              dataset_id: datasetId,
+              type: "analysis_summary",
+              status: "success",
+              ai_response: text,
+              insight: isDeepDive ? "Deep-dive analysis summary" : "Analysis summary",
+            })
+
+            console.log("[v0] AI response stored successfully")
+          } catch (error) {
+            console.error("[v0] Failed to store AI response:", error)
+            // Don't throw - we don't want to break the response stream
+          }
         }
       },
     })

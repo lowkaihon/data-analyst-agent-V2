@@ -16,7 +16,7 @@ export interface ChatTurn {
   started_at: string
 }
 
-export type RunType = "sql" | "chart" | "validate" | "summarize"
+export type RunType = "sql" | "chart" | "validate" | "summarize" | "analysis_summary"
 export type RunStatus = "success" | "failed"
 
 export interface Run {
@@ -31,8 +31,10 @@ export interface Run {
   duration_ms?: number | null
   error?: string | null
   insight?: string | null
+  ai_response?: string | null
   chart_spec?: any | null
   sample?: any | null
+  columns?: string[] | null
   pinned: boolean
 }
 
