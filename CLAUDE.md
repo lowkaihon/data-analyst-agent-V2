@@ -102,9 +102,8 @@ This project strictly uses **pnpm**. Do not use npm or yarn.
 │       ├── client.ts               # Supabase client (browser)
 │       └── server.ts               # Supabase client (server)
 ├── scripts/
-│   ├── 000_reset_database.sql      # Database reset script
-│   ├── 001_create_schema.sql       # Schema creation
-│   └── 002_initialize_database.sql # Database initialization
+│   ├── reset_database.sql          # Database reset script
+│   └── initialize_database.sql     # Database initialization
 ├── styles/
 │   └── globals.css                 # Global stylesheet
 ├── public/

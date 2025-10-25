@@ -297,13 +297,13 @@ Analyze subscription trends by month and day. Identify optimal contact timing pa
 
    **For first-time setup:**
    - Open your Supabase project → SQL Editor
-   - Run `scripts/002_initialize_database.sql`
+   - Run `scripts/initialize_database.sql`
    - This creates all necessary tables (`datasets`, `chat_turns`, `runs`, `reports`) and indexes
 
    **If you need to reset an existing database:**
    > ⚠️ **WARNING**: This will delete all data!
-   - First run: `scripts/000_reset_database.sql`
-   - Then run: `scripts/002_initialize_database.sql`
+   - First run: `scripts/reset_database.sql`
+   - Then run: `scripts/initialize_database.sql`
 
    > **Note**: The database schema includes `table_name`, `column_count`, and `user_context` fields. If you ran an older schema version, you must reset your database using the scripts above.
 
@@ -522,9 +522,8 @@ The AI agent follows these PostgreSQL-specific patterns to avoid common errors:
 │       ├── client.ts               # Supabase client (browser)
 │       └── server.ts               # Supabase client (server)
 ├── scripts/
-│   ├── 000_reset_database.sql      # Database reset script
-│   ├── 001_create_schema.sql       # Schema creation
-│   └── 002_initialize_database.sql # Database initialization
+│   ├── reset_database.sql          # Database reset script
+│   └── initialize_database.sql     # Database initialization
 ├── styles/
 │   └── globals.css                 # Global stylesheet
 ├── public/

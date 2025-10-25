@@ -17,5 +17,5 @@ DROP INDEX IF EXISTS idx_chat_turns_dataset_id;
 DROP INDEX IF EXISTS idx_reports_dataset_id;
 
 -- Note: After running this script, you MUST run:
--- scripts/002_initialize_database.sql
+-- scripts/initialize_database.sql
 -- to recreate the tables with the updated schema
