@@ -124,4 +124,8 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Prevent layout shift when scrollbar appears/disappears */
+  .overflow-y-auto {
+    scrollbar-gutter: stable;
+  }
 }

@@ -8,7 +8,7 @@ An AI-powered data analysis platform that enables interactive exploration of CSV
 ## Features
 
 ### 🤖 AI-Powered Analysis
-- **Dual-Model Architecture**: GPT-4o for standard mode (fast, cost-effective) and GPT-5 for deep dive mode (advanced reasoning)
+- **Multi-Model Architecture**: Uses GPT-5-mini for all analysis modes (standard and deep dive). Uses GPT-4o-mini for SQL subagent (fast, cost-effective). Uses GPT-5 for report generation.
 - **Autonomous Agentic Workflow**: 5-stage iterative exploration (EXPLORE → VISUALIZE → REFINE → VALIDATE → SUMMARIZE)
 - **Multi-Step Tool Calling**: Up to 10 autonomous tool calls per analysis for standard exploration
 - **Deep Dive Mode**: Optional exhaustive analysis with up to 40 steps (30 for exploration, 10 reserved for summary generation)
@@ -24,7 +24,7 @@ An AI-powered data analysis platform that enables interactive exploration of CSV
 - **4-Phase Workflow**: Baseline Understanding → Pattern Discovery → Cross-Analysis → Validation & Synthesis
 - **Multi-Dimensional Exploration**: Investigates feature interactions, segments, and complex patterns
 - **Selective Visualization**: Creates only 5-7 essential charts (quality over quantity)
-- **GPT-5 Powered**: Leverages advanced reasoning for comprehensive insights
+- **GPT-5-mini Powered**: Leverages advanced reasoning for comprehensive insights
 - **Extended Analysis Time**: 180-second timeout supports thorough investigation (2-3 minutes)
 - **Transparent**: Shows exact prompt being sent with character count
 
@@ -70,8 +70,9 @@ An AI-powered data analysis platform that enables interactive exploration of CSV
   - Optimized batch inserts with dynamic sizing
   - Transaction-wrapped ingestion for ACID compliance
 - **OpenAI AI Models**:
-  - GPT-4o for standard mode (fast, cost-effective analysis)
-  - GPT-5 for deep dive mode (advanced reasoning, 40-step workflows)
+  - GPT-5-mini for all analysis modes (standard and deep dive)
+  - Standard mode: 10-step workflows for focused analysis
+  - Deep dive mode: 30-step workflows for comprehensive exploration
 - **Node.js Runtime** for API routes with SQL operations
 
 ### AI Tools (Server-Side)
@@ -96,7 +97,7 @@ The AI agent uses a minimal 2-tool system with reference-based data flow:
 
 The AI agent operates autonomously through a 5-stage iterative workflow powered by multi-step tool calling:
 - **Standard Mode**: `stepCountIs(10)` for quick, focused analysis (GPT-4o)
-- **Deep Dive Mode**: `stepCountIs(40)` for exhaustive exploration - 30 tool calls + 10-step summary buffer (GPT-5)
+- **Deep Dive Mode**: `stepCountIs(40)` for exhaustive exploration - 30 steps + 10-step buffer
 
 ### 1. **EXPLORE** - Execute SQL Queries
 - Starts with broad queries to understand data distribution
@@ -166,7 +167,7 @@ For complex datasets or when you need comprehensive insights, activate **Deep Di
 2. **Review/Edit the analysis prompt** in the dialog:
    - Default: "Conduct a comprehensive analysis to identify actionable insights. Explore individual feature relationships with the target variable, multi-dimensional interactions between features, and key patterns or segments. Use exploratory analysis, visualization, statistical validation, and synthesis to deliver data-driven recommendations."
    - Customize to focus on specific features, business questions, or analytical approaches
-3. **Click "Start Deep Dive"** to begin (analysis takes 2-3 minutes, powered by GPT-5)
+3. **Click "Start Deep Dive"** to begin (analysis takes 2-3 minutes, powered by GPT-5-mini)
 
 ### Deep Dive Workflow (40 Steps Total)
 
@@ -334,7 +335,7 @@ Analyze subscription trends by month and day. Identify optimal contact timing pa
   - Click "Deep Dive" button in chat header
   - Customize the analysis prompt if needed
   - Get comprehensive insights with 5-7 high-impact visualizations
-  - Powered by GPT-5 for advanced reasoning
+  - Powered by GPT-5-mini for advanced reasoning
 
 ### 3. Review Artifacts
 - **Preview Tab**: Browse your raw data
@@ -382,8 +383,8 @@ The application uses an optimized batch ingestion system with enterprise-grade r
 1. **CSV Upload** → Parsed and inserted into Postgres table `ds_<datasetId>` using optimized batch pipeline
 2. **User Question** → AI agent initiates autonomous 5-stage workflow
 3. **Tool Execution Loop**:
-   - **Standard mode** (GPT-4o): `stepCountIs(10)` for focused analysis
-   - **Deep dive mode** (GPT-5): `stepCountIs(40)` with 30+10 buffer strategy:
+   - **Standard mode** (GPT-5-mini): `stepCountIs(10)` for focused analysis
+   - **Deep dive mode** (GPT-5-mini): `stepCountIs(40)` with 30+10 buffer strategy:
      - Steps 1-30: SQL exploration and selective visualization (5-7 charts)
      - Steps 31-40: Reserved for comprehensive text summary generation
      - This buffer ensures final summary is always generated even if tool calls run long

@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useLayoutEffect } from "react"
 import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport } from "ai"
 import { Send, Loader2, Sparkles, FileText } from "lucide-react"
@@ -20,6 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { FormattedResponse } from "@/components/formatted-response"
 import type { ToolUIPart } from "ai"
 
 interface ChatPanelProps {
@@ -38,7 +39,10 @@ export function ChatPanel({ datasetId, onGenerateReport, isGeneratingReport, onS
   const [showDeepDiveDialog, setShowDeepDiveDialog] = useState(false)
   const [deepDivePrompt, setDeepDivePrompt] = useState(DEEP_DIVE_PROMPT)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const prevStatusRef = useRef<string>("ready")
+  const isInitialMountRef = useRef(true)
+  const [hasUserScrolledAway, setHasUserScrolledAway] = useState(false)
 
   console.log("ChatPanel initialized with datasetId:", datasetId)
 
@@ -70,10 +74,51 @@ export function ChatPanel({ datasetId, onGenerateReport, isGeneratingReport, onS
     }
   }, [status, messages.length, sendMessage])
 
-  // Auto-scroll to bottom when messages change or streaming status updates
+  // Detect manual scrolling to track user intent
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages, status])
+    const scrollContainer = scrollContainerRef.current
+    if (!scrollContainer) return
+
+    const handleScroll = () => {
+      const { scrollHeight, scrollTop, clientHeight } = scrollContainer
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight
+
+      // User is at bottom (within 100px threshold)
+      if (distanceFromBottom < 100) {
+        setHasUserScrolledAway(false)
+      }
+      // User has scrolled away from bottom
+      else if (distanceFromBottom > 150) {
+        setHasUserScrolledAway(true)
+      }
+    }
+
+    scrollContainer.addEventListener("scroll", handleScroll, { passive: true })
+    return () => scrollContainer.removeEventListener("scroll", handleScroll)
+  }, [])
+
+  // Auto-scroll to bottom when messages change (improved to prevent flickering)
+  useLayoutEffect(() => {
+    const scrollContainer = scrollContainerRef.current
+    const messagesEnd = messagesEndRef.current
+
+    if (!scrollContainer || !messagesEnd) return
+
+    // On initial mount, always scroll to bottom instantly
+    if (isInitialMountRef.current) {
+      messagesEnd.scrollIntoView({ behavior: "auto" })
+      isInitialMountRef.current = false
+      return
+    }
+
+    // Only auto-scroll if user hasn't manually scrolled away
+    if (!hasUserScrolledAway) {
+      // Use 'auto' (instant) during streaming to prevent animation conflicts
+      // Use 'smooth' when idle for better UX
+      const behavior: ScrollBehavior = status === "streaming" ? "auto" : "smooth"
+      messagesEnd.scrollIntoView({ behavior })
+    }
+  }, [messages, status, hasUserScrolledAway])
 
   // Detect when streaming ends and trigger chart refresh
   useEffect(() => {
@@ -93,6 +138,14 @@ export function ChatPanel({ datasetId, onGenerateReport, isGeneratingReport, onS
       setError(null)
       sendMessage({ text: input }, { body: { mode: "normal" } })
       setInput("")
+
+      // Ensure user hasn't scrolled away flag is reset when they send a message
+      setHasUserScrolledAway(false)
+
+      // Scroll to bottom smoothly after sending
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+      }, 100)
     } catch (err) {
       console.error("Error sending message:", err)
       setError(err instanceof Error ? err.message : "Failed to send message")
@@ -118,8 +171,17 @@ export function ChatPanel({ datasetId, onGenerateReport, isGeneratingReport, onS
     try {
       setError(null)
       setShowDeepDiveDialog(false)
+
+      // Ensure user hasn't scrolled away flag is reset when starting deep dive
+      setHasUserScrolledAway(false)
+
       // Pass mode in sendMessage options (correct AI SDK pattern)
       sendMessage({ text: deepDivePrompt }, { body: { mode: "deep-dive" } })
+
+      // Scroll to bottom smoothly after starting
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+      }, 100)
     } catch (err) {
       console.error("Error starting deep dive:", err)
       setError(err instanceof Error ? err.message : "Failed to start deep dive")
@@ -147,7 +209,7 @@ export function ChatPanel({ datasetId, onGenerateReport, isGeneratingReport, onS
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4">
         <div className="flex flex-col gap-4">
           {error && (
             <Card className="border-destructive bg-destructive/10 p-3">
@@ -193,9 +255,7 @@ export function ChatPanel({ datasetId, onGenerateReport, isGeneratingReport, onS
                     // Render text parts
                     if (part.type === "text" && part.text) {
                       return (
-                        <div key={partIndex} className="whitespace-pre-wrap text-sm">
-                          {part.text}
-                        </div>
+                        <FormattedResponse key={partIndex} text={part.text} />
                       )
                     }
 
