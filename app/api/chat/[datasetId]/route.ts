@@ -210,10 +210,17 @@ Analyze the provided SQL query results (limited to 100 rows) and provide a conci
                   prompt: `Query: ${guardedSQL}
 Reasoning: ${reasoning}
 Row count: ${result.rowCount}
-Sample data (first ${Math.min(result.rowCount, 100)} rows):
-${JSON.stringify(result.rows.slice(0, 100), null, 2)}
 
-Provide 2-3 sentence analysis:`,
+<sql_results>
+${JSON.stringify(result.rows.slice(0, 100), null, 2)}
+</sql_results>
+
+Analyze the above SQL results according to the system instructions.
+Format your response with:
+**Key Findings:** ...
+**Notable Observations:** ...
+**Recommended Exploration:** ...
+`,
                   temperature: 0.3, // More deterministic
                 });
 

@@ -364,8 +364,10 @@ export function ChatPanel({ datasetId, onGenerateReport, isGeneratingReport, onS
               Start Deep Dive Analysis
             </DialogTitle>
             <DialogDescription>
-              This will run an in-depth exploration of your dataset using up to 30 analysis steps.
-              The analysis may take 2-3 minutes to complete.
+              Deep dive starts with fresh conversation context for unbiased comprehensive analysis.
+              All SQL queries and charts remain accessible in their tabs. The analysis uses up to
+              30 steps and may take 2-3 minutes. Customize the prompt below to reference specific
+              findings if needed.
             </DialogDescription>
           </DialogHeader>
 

@@ -5,6 +5,8 @@ An AI-powered data analysis platform that enables interactive exploration of CSV
 [![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com/kaihon333haha-5908s-projects/v0-data-analyst-agent)
 [![Built with v0](https://img.shields.io/badge/Built%20with-v0.app-black?style=for-the-badge)](https://v0.app/chat/projects/WdUJaFsY9r0)
 
+Scaffolded with Vercel v0; productionized with Next.js 15 + Supabase/Postgres. Used AI pair-programming (Claude Code) to accelerate refactors.
+
 ## Features
 
 ### 🤖 AI-Powered Analysis
@@ -204,52 +206,77 @@ The agentic approach allows GPT-5-mini to adapt its exploration strategy to each
 - Verifying specific metrics or values
 - Simple data lookups
 
-### Context Sharing Between Modes
+### How Context Works Between Modes
 
-**All modes share the same conversation history.** When you switch between normal and deep dive modes, the AI retains full context including:
+Understanding how conversation history and data artifacts are managed across modes is essential for effective analysis.
 
-✅ All previous questions and answers
-✅ All SQL queries executed (from any mode)
-✅ All query results and analyses
-✅ All charts created
-✅ All insights and findings
+#### Conversation History Behavior
+
+**Deep Dive Mode** starts with **fresh conversation context** every time:
+- When you enter deep dive mode, the AI only sees your current deep dive request + dataset schema
+- Previous chat history is not available to the AI during deep dive analysis
+- This ensures unbiased, comprehensive exploration without assumptions from prior exchanges
+- **Sequential deep dives don't see each other** - each starts fresh
+
+**Normal Mode** maintains **full cumulative conversation history**:
+- Sees all previous questions, answers, and exchanges (including deep dive interactions)
+- Can reference findings from previous deep dives
+- Provides continuity for follow-up questions and iterative exploration
+
+**Scenario Examples:**
+
+| Scenario | What AI Sees |
+|----------|-------------|
+| **Normal Mode Question** | ✅ Full conversation history |
+| **Enter Deep Dive** | ❌ Only current request + schema (history reset) |
+| **Return to Normal Mode** | ✅ Full history including the deep dive interaction |
+| **Second Deep Dive** | ❌ Only current request + schema (does NOT see first deep dive) |
+
+**Customizing Deep Dive Context:**
+
+Since deep dive starts fresh, you can **edit the deep dive prompt** to include specific context:
+
+```
+Example: "Building on Query 15 which showed high churn in the West region,
+perform comprehensive analysis of customer segments and churn drivers in
+that region. Focus on age, job type, and account tenure interactions."
+```
+
+This allows you to provide targeted direction while still benefiting from deep dive's comprehensive approach.
+
+#### Shared Artifacts & Data
+
+**All analysis artifacts persist across both modes and are accessible to you:**
+
+✅ **SQL queries** - View in SQL tab, copy, re-run, or pin
+✅ **Charts and visualizations** - Browse in Charts tab
+✅ **Query results** - Stored in database for chart generation
+✅ **AI analysis summaries** - Preserved for report generation
+✅ **Pinned insights** - Flagged items persist across sessions
 
 **Example Workflow:**
 
 ```
 1. Normal Mode: "What is average revenue by region?"
-   → AI runs Query 1, creates Chart 1
+   → Query 1 created, Chart 1 generated
    → Response: "West: $2.5M, East: $1.8M, South: $1.2M"
 
-2. Deep Dive: Click "Deep Dive" button
-   → AI runs comprehensive 25-step analysis (Query 2-26)
-   → Creates 6 detailed charts (Chart 2-7)
-   → Explores segments, trends, correlations, outliers
-   → Summary: "West grew 45%, East declined 12%, South stable..."
+2. Deep Dive: "Analyze regional performance comprehensively"
+   → Starts fresh (doesn't see Query 1 conversation)
+   → Creates Query 2-26, Chart 2-7 independently
+   → Comprehensive analysis of all regions
+   → All artifacts saved to database
 
-3. Normal Mode: "Why did East decline?"
-   → AI responds: "From the deep dive analysis (Query 18, Chart 4),
-      East region lost 3 major accounts in Q4, reducing volume by
-      2,300 units. This accounts for 87% of the decline."
+3. Normal Mode: "Based on the deep dive, why did East decline?"
+   → AI sees full conversation history (including deep dive Q&A)
+   → Can reference: "The deep dive analysis identified..."
+   → Access to ALL artifacts (Query 1-26, Chart 1-7) in tabs
 ```
 
-**The AI can explicitly reference:**
-- Specific queries by number: "From Query 18..."
-- Specific charts: "See Chart 5: Regional Performance..."
-- Previous insights: "Building on the earlier finding that..."
-- Cross-mode findings: "The deep dive revealed..." (when in normal mode)
-
-**Sequential Deep Dives:**
-
-If you run multiple deep dives, each one sees all previous work:
-
-```
-Deep Dive 1: Explores revenue patterns (25 queries, 6 charts)
-Deep Dive 2: "Building on previous analysis (Query 1-25), now exploring
-              customer churn patterns..." (adds 20 new queries)
-```
-
-The second deep dive recognizes previous work and avoids redundant exploration.
+**Report Generation** uses artifacts from both modes:
+- Pulls from pinned and recent SQL queries/charts regardless of mode
+- Includes AI analysis summaries from both normal and deep dive interactions
+- Up to 50 artifacts can be included in reports
 
 **Important Limitations:**
 
