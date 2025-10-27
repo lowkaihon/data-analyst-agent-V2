@@ -1,6 +1,6 @@
 # Data Analyst Agent
 
-An AI-powered data analysis platform that enables interactive exploration of CSV datasets through natural conversation. Upload your data, ask questions, and let the AI autonomously run SQL queries, generate visualizations, validate findings, and produce comprehensive reports.
+An AI-powered data analysis platform that enables interactive exploration of CSV datasets through natural conversation. Upload your data, ask questions, and let the AI autonomously run SQL queries, generate visualizations, and produce comprehensive reports.
 
 [![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com/kaihon333haha-5908s-projects/v0-data-analyst-agent)
 [![Built with v0](https://img.shields.io/badge/Built%20with-v0.app-black?style=for-the-badge)](https://v0.app/chat/projects/WdUJaFsY9r0)
@@ -8,25 +8,14 @@ An AI-powered data analysis platform that enables interactive exploration of CSV
 ## Features
 
 ### 🤖 AI-Powered Analysis
-- **Multi-Model Architecture**: Uses GPT-5-mini for all analysis modes (standard and deep dive). Uses GPT-4o-mini for SQL subagent (fast, cost-effective). Uses GPT-5 for report generation.
-- **Autonomous Agentic Workflow**: 5-stage iterative exploration (EXPLORE → VISUALIZE → REFINE → VALIDATE → SUMMARIZE)
-- **Multi-Step Tool Calling**: Up to 10 autonomous tool calls per analysis for standard exploration
-- **Deep Dive Mode**: Optional exhaustive analysis with up to 40 steps (30 for exploration, 10 reserved for summary generation)
-- **Proactive Drill-Down**: AI automatically investigates spikes, outliers, and patterns without prompting
-- **Smart Visualizations**: Generates 5-7 high-impact Vega-Lite charts based on judgment and data patterns
+- **Multi-Model Architecture**: Uses GPT-4o for normal mode and GPT-5-mini for deep dive mode. Uses GPT-4o-mini for SQL subagent (fast, cost-effective analysis of full query results). Uses GPT-5 for report generation.
+- **Dual-Mode Architecture**: Normal mode (focused Q&A with scope discipline) + Deep dive mode (agentic reasoning for comprehensive exploration)
+- **Multi-Step Tool Calling**: Normal mode uses 1-3 queries for focused answers (10 step max). Deep dive uses 20-30 analysis steps (40 step max with buffer)
+- **Focused Answers**: Normal mode answers exactly what's asked without unsolicited exploration. Deep dive mode proactively investigates spikes, outliers, and patterns
+- **Smart Visualizations**: Normal mode creates charts when data shows patterns. Deep dive generates 5-7 high-impact charts for key distributions
 - **Self-Correction**: Retries failed queries with helpful error messages and fix suggestions
 - **Token-Efficient Architecture**: Reference-based data flow minimizes token usage while maintaining full data access
-- **Contextual Insights**: AI understands your data context and suggests relevant explorations
-
-### 🔬 Deep Dive Analysis
-- **One-Click Exhaustive Analysis**: Trigger comprehensive exploration with 30 tool calls + 10-step summary buffer
-- **Customizable Prompts**: Edit analysis objectives to focus on specific aspects
-- **4-Phase Workflow**: Baseline Understanding → Pattern Discovery → Cross-Analysis → Validation & Synthesis
-- **Multi-Dimensional Exploration**: Investigates feature interactions, segments, and complex patterns
-- **Selective Visualization**: Creates only 5-7 essential charts (quality over quantity)
-- **GPT-5-mini Powered**: Leverages advanced reasoning for comprehensive insights
-- **Extended Analysis Time**: 180-second timeout supports thorough investigation (2-3 minutes)
-- **Transparent**: Shows exact prompt being sent with character count
+- **Contextual Insights**: Understands dataset context and suggests follow-up questions for further exploration
 
 ### 📊 Interactive Split-View Interface
 - **Chat Panel (Left)**: Streaming conversation with the AI agent
@@ -70,9 +59,10 @@ An AI-powered data analysis platform that enables interactive exploration of CSV
   - Optimized batch inserts with dynamic sizing
   - Transaction-wrapped ingestion for ACID compliance
 - **OpenAI AI Models**:
-  - GPT-5-mini for all analysis modes (standard and deep dive)
-  - Standard mode: 10-step workflows for focused analysis
-  - Deep dive mode: 30-step workflows for comprehensive exploration
+  - GPT-4o for normal mode: 10-step workflows for focused analysis
+  - GPT-5-mini for deep dive mode: AI told 30 steps (plans 20-30 analysis), system allows 40 (10-step buffer)
+  - GPT-4o-mini for sub-agent: Analyzes full SQL results (up to 100 rows) cost-effectively
+  - GPT-5 for report generation: High-quality synthesis of findings
 - **Node.js Runtime** for API routes with SQL operations
 
 ### AI Tools (Server-Side)
@@ -81,8 +71,10 @@ The AI agent uses a minimal 2-tool system with reference-based data flow:
 1. **`executeSQLQuery`**: Runs SELECT-only queries with automatic LIMIT enforcement
    - Executes SQL against dataset table
    - Stores full results in `runs.sample` (JSONB column)
-   - Returns: `{ queryId, rowCount, preview, reasoning }`
+   - Spawns GPT-4o-mini sub-agent to analyze full results (up to 100 rows)
+   - Returns: `{ queryId, rowCount, preview, analysis, reasoning }`
    - Preview: First 5 rows only (token-efficient)
+   - Analysis: 2-3 sentence summary from sub-agent covering patterns, outliers, and suggested next dimensions
    - QueryId: Reference for fetching full data later
 
 2. **`createChart`**: Generates Vega-Lite chart specifications
@@ -93,75 +85,54 @@ The AI agent uses a minimal 2-tool system with reference-based data flow:
 
 **Reference-Based Pattern**: Instead of passing large datasets through AI context, executeSQLQuery stores data in DB and returns a small preview + queryId. When visualization is needed, createChart fetches the full data using the queryId. This dramatically reduces token usage while maintaining full data access.
 
-## AI Analysis Workflow
+## AI Modes
 
-The AI agent operates autonomously through a 5-stage iterative workflow powered by multi-step tool calling:
-- **Standard Mode**: `stepCountIs(10)` for quick, focused analysis (GPT-4o)
-- **Deep Dive Mode**: `stepCountIs(40)` for exhaustive exploration - 30 steps + 10-step buffer
+### Normal Mode (GPT-4o, 10 steps)
 
-### 1. **EXPLORE** - Execute SQL Queries
-- Starts with broad queries to understand data distribution
-- Uses aggregate functions (COUNT, SUM, AVG, GROUP BY) to reveal patterns
-- Always applies LIMIT (≤100 rows) to avoid large result sets
-- Examines preview (first 5 rows) before proceeding
-- Example: `SELECT age, COUNT(*) as count FROM table GROUP BY age`
+Normal mode is engineered for focused Q&A with strict scope discipline. It answers your specific question efficiently and stops.
 
-### 2. **VISUALIZE** - Create Charts (Judgment-Based)
-- Generates visualizations when they add insight beyond numbers
-- Uses queryId from executeSQLQuery to fetch full data
-- Creates bar charts for distributions, line charts for trends, scatter for correlations
-- Skips visualization for simple lookups or single aggregate values
+**Core Principles:**
+- **Scope Discipline**: Responds only to the specific question asked
+- **Minimum Queries**: Uses the minimum SQL queries required to answer completely
+- **No Proactive Exploration**: Does not explore adjacent topics, validate with additional queries, or perform comprehensive analysis unless explicitly requested
+- **Direct Answers**: States answer with supporting evidence and stops
 
-### 3. **REFINE** - Iterative Drill-Down
-The AI proactively investigates deeper without being asked:
-- **Spike Detection**: When seeing outliers → queries that specific segment
-- **Segment Analysis**: When one group stands out → breaks down further
-- **Multi-Dimensional**: Explores age, job, education, marital status simultaneously
-- **Pattern Testing**: Forms hypotheses and tests with targeted queries
-- **Why? Chain**: Keeps asking "Why?" and "What else?" until patterns are clear
-- Uses 5-8 tool calls for thorough exploration (not just 2-3 surface-level queries)
+**Typical Workflow:**
+1. Parse the user's specific question
+2. Execute necessary SQL queries (usually 1-3)
+3. Create visualizations if data shows clear patterns (5+ rows)
+4. State direct answer with evidence
+5. Suggest 2 follow-up questions
+6. Stop and wait for next question
 
-### 4. **VALIDATE** - Quality Assurance
-- Verifies key claims with follow-up queries
-- Cross-checks aggregations (do group totals = overall total?)
-- Confirms specific percentages with focused queries
-- Ensures visualizations support conclusions
-
-### 5. **SUMMARIZE** - Actionable Insights
-- Provides brief summary (2-3 sentences) of key findings
-- References artifacts: "See SQL tab" or "Charts tab"
-- Suggests natural next steps
-- Focuses on WHAT is happening, WHY it's happening, WHAT should be done
-
-### Self-Correction
-- If query fails → analyzes error and retries with corrected approach
-- If results empty → tries broader filters or different angle
-- If unexpected → investigates with follow-up queries
-- Never gives up after one failed attempt
-
-### Example Flow
+**Example:**
 ```
-User: "What factors affect subscription rates?"
+User: "What is the average age by job type?"
 
-Step 1: executeSQLQuery → 11.7% baseline rate (45,211 records)
-Step 2: executeSQLQuery by age → Age 18-25 shows 58% (SPIKE!)
-        → createChart (bar chart)
-Step 3: executeSQLQuery → Drill down: Students 18-25 have 72% rate
-        → createChart (bar chart)
-Step 4: executeSQLQuery → Verify finding: Confirmed 72.1%
-Step 5: executeSQLQuery by marital → Singles 14.3% vs married 9.2%
-        → createChart (bar chart)
-Step 6: Summary: "Students aged 18-25 show 72% rate vs 11.7% baseline.
-        Singles also elevated at 14.3%. See SQL and Charts tabs."
+Step 1: executeSQLQuery → Calculates average age for each job type
+Step 2: createChart → Bar chart showing the distribution
+Step 3: Response → "Average age varies from 32 (blue-collar) to 47 (retired).
+        See SQL and Charts tabs for details."
+
+Suggested follow-ups:
+1. How does age correlate with subscription rate?
+2. What is the income distribution by job type?
 ```
 
-This demonstrates: baseline → exploration → spike detection → drill-down → verification → multi-dimensional → summary
+**When to use Normal Mode:**
+- Quick, specific questions
+- Single-dimension queries
+- Verifying specific metrics or values
+- Simple data lookups
+- Follow-up questions on existing analysis
 
-## Deep Dive Mode
+For exploratory analysis or comprehensive investigations, use Deep Dive mode instead.
 
-For complex datasets or when you need comprehensive insights, activate **Deep Dive Mode** for an exhaustive analysis using up to 40 steps (30 for exploration + 10 reserved for summary).
+### Deep Dive Mode (GPT-5-mini, 40 steps max)
 
-### How to Use Deep Dive
+For complex datasets or when you need comprehensive insights, activate **Deep Dive Mode** for an exhaustive analysis (AI told 30 steps, plans 20-30 step analysis, system allows 40 with 10-step safety buffer).
+
+**How to Use Deep Dive:**
 
 1. **Click "Deep Dive" button** in the chat header
 2. **Review/Edit the analysis prompt** in the dialog:
@@ -169,39 +140,37 @@ For complex datasets or when you need comprehensive insights, activate **Deep Di
    - Customize to focus on specific features, business questions, or analytical approaches
 3. **Click "Start Deep Dive"** to begin (analysis takes 2-3 minutes, powered by GPT-5-mini)
 
-### Deep Dive Workflow (40 Steps Total)
+**Deep Dive Workflow (AI Budget: 30 Steps, System Max: 40)**
 
-**Tool Budget:** 30 steps for SQL queries and visualizations
-**Summary Buffer:** 10 steps reserved for generating comprehensive final summary
+**AI is told:** 30 steps for analysis (plans for 20-30 steps based on complexity)
+**System allows:** 40 steps total (10-step safety buffer in case AI goes over)
 
-The agent follows a structured 4-phase approach:
+Deep dive mode trusts GPT-5-mini's agentic reasoning capabilities to autonomously determine the best exploration approach. Unlike normal mode's focused Q&A, deep dive operates with minimal restrictions:
 
-**Phase 1: Baseline Understanding (Steps 1-5)**
-- Establish overall statistics and distributions
-- Profile categorical and numerical features
-- Create foundational visualizations
+**What the AI is told:**
+- Perform thorough analysis of the entire dataset
+- Explore major dimensions, patterns, outliers, and feature interactions
+- Validate key findings
+- Deliver 3-5 actionable insights with strong evidence
+- You have 30 steps available (typical comprehensive analysis uses 20-30 steps)
+- Create 5-7 high-impact visualizations for major distributions and key patterns
 
-**Phase 2: Pattern Discovery (Steps 6-15)**
-- Explore feature-target relationships
-- Identify correlations and associations
-- Detect outliers, spikes, and anomalies
-- Cross-tabulate multiple dimensions
+**How it works:**
+The AI autonomously decides what to explore based on the data and user's objectives. It may:
+- Start with broad queries to understand distributions
+- Drill down into interesting patterns or outliers
+- Cross-analyze multiple dimensions
+- Validate hypotheses with targeted queries
+- Create visualizations for key findings
 
-**Phase 3: Deep Cross-Analysis (Steps 16-25)**
-- Investigate feature interactions
-- Discover hidden segments
-- Validate patterns across subpopulations
-- Explore temporal patterns if applicable
+**Output structure:**
+Responses are formatted with two sections:
+1. **Executive Summary**: 3-5 key insights (max 10 sentences) with evidence inline
+2. **Detailed Analysis**: Key findings, validation performed, hypothesis tests, standout segments, and limitations
 
-**Phase 4: Validation & Synthesis (Steps 26-40)**
-- Verify all major claims (steps 26-28)
-- Cross-check findings for consistency (steps 28-30)
-- Identify top 3-5 actionable insights (step 30)
-- Create 5-7 summary visualizations (selective, high-impact only)
-- Generate comprehensive text summary (steps 31-40)
-- Formulate concrete recommendations
+The agentic approach allows GPT-5-mini to adapt its exploration strategy to each unique dataset and question, rather than following a rigid workflow.
 
-### When to Use Deep Dive
+**When to Use Each Mode:**
 
 ✅ **Use Deep Dive when:**
 - Initial dataset exploration (understand all dimensions)
@@ -210,13 +179,13 @@ The agent follows a structured 4-phase approach:
 - Need comprehensive analysis for stakeholder presentations
 - Want to validate multiple hypotheses simultaneously
 
-❌ **Use Standard Mode when:**
+✅ **Use Normal Mode when:**
 - Quick follow-up questions
 - Focused single-dimension queries
 - Verifying specific metrics or values
 - Simple data lookups
 
-### Example Deep Dive Customizations
+**Example Deep Dive Customizations:**
 
 **Focus on specific features:**
 ```
@@ -327,11 +296,10 @@ Analyze subscription trends by month and day. Identify optimal contact timing pa
 ### 2. Analyze with AI
 - Ask questions in natural language
 - The AI automatically:
-  - Runs SQL queries to explore your data
+  - Runs SQL queries to analyze your data
   - Generates relevant visualizations
-  - Validates findings
   - Provides concise insights
-- Switch to **Deep Dive mode** for exhaustive analysis (up to 40 steps):
+- Switch to **Deep Dive mode** for exhaustive analysis (30-step budget, 40-step system max):
   - Click "Deep Dive" button in chat header
   - Customize the analysis prompt if needed
   - Get comprehensive insights with 5-7 high-impact visualizations
@@ -381,24 +349,28 @@ The application uses an optimized batch ingestion system with enterprise-grade r
 
 ### Data Flow (Reference-Based Pattern)
 1. **CSV Upload** → Parsed and inserted into Postgres table `ds_<datasetId>` using optimized batch pipeline
-2. **User Question** → AI agent initiates autonomous 5-stage workflow
+2. **User Question** → AI agent processes user questions using appropriate mode strategy
 3. **Tool Execution Loop**:
-   - **Standard mode** (GPT-5-mini): `stepCountIs(10)` for focused analysis
-   - **Deep dive mode** (GPT-5-mini): `stepCountIs(40)` with 30+10 buffer strategy:
-     - Steps 1-30: SQL exploration and selective visualization (5-7 charts)
-     - Steps 31-40: Reserved for comprehensive text summary generation
-     - This buffer ensures final summary is always generated even if tool calls run long
+   - **Normal mode** (GPT-4o): `stepCountIs(10)` for focused analysis
+   - **Deep dive mode** (GPT-5-mini): `stepCountIs(40)` - AI told 30 steps, 10-step safety buffer:
+     - AI plans for 20-30 steps based on complexity: SQL exploration and selective visualization (5-7 charts)
+     - System allows up to 40 steps total to provide safety buffer
+     - This buffer ensures analysis completes even if AI goes slightly over budget
    - **executeSQLQuery**:
      - Executes SELECT query against dataset table
      - Stores full results in `runs.sample` (JSONB)
-     - Returns to AI: `{ queryId, rowCount, preview }` (only 5 rows)
+     - Spawns GPT-4o-mini sub-agent to analyze full results (up to 100 rows)
+     - Returns to AI: `{ queryId, rowCount, preview, analysis, reasoning }` (preview: only 5 rows)
      - On error: Returns helpful message with fix suggestions (e.g., lists available columns)
-   - **createChart** (selective, judgment-based):
+   - **createChart**: Generates Vega-Lite chart specifications
      - Receives queryId from executeSQLQuery
      - Fetches full data from `runs` table using queryId
      - Generates Vega-Lite spec and stores in `runs.chart_spec`
-     - Only created for high-impact insights (5-7 per deep dive)
-   - AI examines preview, decides next action (drill-down, verify, visualize, etc.)
+   - **Chart usage patterns**:
+     - Normal mode: Creates charts when data shows clear patterns (judgment-based)
+     - Deep dive mode: Creates 5-7 high-impact charts for key distributions and insights
+   - **Normal mode**: AI answers question directly with evidence and stops
+   - **Deep dive mode**: AI decides next action based on patterns discovered (drill-down, cross-analyze, visualize, etc.)
    - Loop continues until analysis is complete or step limit reached
 4. **Streaming Response** → Results streamed to client via `toUIMessageStreamResponse()`
 5. **Artifact Storage** → All queries and charts saved to `runs` table for history
@@ -465,7 +437,7 @@ The AI agent follows these PostgreSQL-specific patterns to avoid common errors:
 │   ├── history-drawer.tsx          # Artifact search and filter
 │   ├── theme-provider.tsx          # Theme context provider
 │   ├── vega-lite-chart.tsx         # Vega-Lite visualization wrapper
-│   ├── ai-elements/                # AI-powered UI components
+│   ├── ai-elements/                # AI-powered UI components (currently using: message.tsx, tool.tsx)
 │   │   ├── actions.tsx             # Tool action buttons
 │   │   ├── artifact.tsx            # Artifact display
 │   │   ├── branch.tsx              # Message branching
@@ -476,7 +448,7 @@ The AI agent follows these PostgreSQL-specific patterns to avoid common errors:
 │   │   ├── image.tsx               # Image rendering
 │   │   ├── inline-citation.tsx     # Inline citations
 │   │   ├── loader.tsx              # Loading states
-│   │   ├── message.tsx             # Message component
+│   │   ├── message.tsx             # Message component (actively used)
 │   │   ├── open-in-chat.tsx        # Open artifact in chat
 │   │   ├── prompt-input.tsx        # Chat input
 │   │   ├── reasoning.tsx           # AI reasoning display
@@ -484,7 +456,7 @@ The AI agent follows these PostgreSQL-specific patterns to avoid common errors:
 │   │   ├── sources.tsx             # Source attribution
 │   │   ├── suggestion.tsx          # Suggestion chips
 │   │   ├── task.tsx                # Task display
-│   │   ├── tool.tsx                # Tool call display
+│   │   ├── tool.tsx                # Tool call display (actively used)
 │   │   └── web-preview.tsx         # Web preview
 │   ├── tabs/
 │   │   ├── charts-tab.tsx          # Visualization gallery
@@ -539,7 +511,8 @@ The AI agent follows these PostgreSQL-specific patterns to avoid common errors:
 ├── tsconfig.json                   # TypeScript configuration
 ├── package.json                    # Dependencies
 ├── pnpm-lock.yaml                  # Lock file
-└── README.md                       # This file
+├── CLAUDE.md                       # Development guidance for Claude Code
+└── README.md                       # Project documentation
 ```
 
 ## Deployment
@@ -553,13 +526,6 @@ This project is configured for deployment on Vercel:
 
 **Live Demo**: [https://vercel.com/kaihon333haha-5908s-projects/v0-data-analyst-agent](https://vercel.com/kaihon333haha-5908s-projects/v0-data-analyst-agent)
 
-## Development
-
-Continue building on [v0.app](https://v0.app/chat/projects/WdUJaFsY9r0) - changes sync automatically to this repository.
-
-## License
-
-MIT
 
 ## Contributing
 

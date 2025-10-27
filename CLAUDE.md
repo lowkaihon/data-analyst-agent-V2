@@ -44,7 +44,7 @@ This project strictly uses **pnpm**. Do not use npm or yarn.
 │   ├── history-drawer.tsx          # Artifact search and filter
 │   ├── theme-provider.tsx          # Theme context provider
 │   ├── vega-lite-chart.tsx         # Vega-Lite visualization wrapper
-│   ├── ai-elements/                # AI-powered UI components
+│   ├── ai-elements/                # AI-powered UI components (currently using: message.tsx, tool.tsx)
 │   │   ├── actions.tsx             # Tool action buttons
 │   │   ├── artifact.tsx            # Artifact display
 │   │   ├── branch.tsx              # Message branching
@@ -55,7 +55,7 @@ This project strictly uses **pnpm**. Do not use npm or yarn.
 │   │   ├── image.tsx               # Image rendering
 │   │   ├── inline-citation.tsx     # Inline citations
 │   │   ├── loader.tsx              # Loading states
-│   │   ├── message.tsx             # Message component
+│   │   ├── message.tsx             # Message component (actively used)
 │   │   ├── open-in-chat.tsx        # Open artifact in chat
 │   │   ├── prompt-input.tsx        # Chat input
 │   │   ├── reasoning.tsx           # AI reasoning display
@@ -63,7 +63,7 @@ This project strictly uses **pnpm**. Do not use npm or yarn.
 │   │   ├── sources.tsx             # Source attribution
 │   │   ├── suggestion.tsx          # Suggestion chips
 │   │   ├── task.tsx                # Task display
-│   │   ├── tool.tsx                # Tool call display
+│   │   ├── tool.tsx                # Tool call display (actively used)
 │   │   └── web-preview.tsx         # Web preview
 │   ├── tabs/
 │   │   ├── charts-tab.tsx          # Visualization gallery
@@ -118,13 +118,13 @@ This project strictly uses **pnpm**. Do not use npm or yarn.
 ├── tsconfig.json                   # TypeScript configuration
 ├── package.json                    # Dependencies
 ├── pnpm-lock.yaml                  # Lock file
-└── README.md                       # This file
+├── CLAUDE.md                       # Development guidance for Claude Code
+└── README.md                       # Project documentation
 ```
 
+## AI SDK Integration
 
-### AI Integration
-
-#### streamText() for API Routes
+### Server-Side: streamText() for API Routes
 
 Uses AI SDK 5's `streamText()` for streaming responses with tools:
 
@@ -157,7 +157,7 @@ export async function POST(req: Request) {
 - Tool results automatically appear in message.parts array
 - Use `stepCountIs(n)` for multi-step tool execution
 
-#### useChat() for Client Components
+### Client-Side: useChat() for Components
 
 **CRITICAL**: Read the docs before using: https://ai-sdk.dev/docs/reference/ai-sdk-ui/use-chat
 
@@ -190,7 +190,7 @@ sendMessage("string")                      // ❌ WRONG - causes runtime errors
 
 Requires environment variables in `.env.local`
 
-### AI SDK Tools
+## AI SDK Tools
 
 **CRITICAL REQUIREMENT**: You MUST read the AI SDK tools documentation before working with tools: https://ai-sdk.dev/docs/ai-sdk-core/tools-and-tool-calling
 
@@ -204,7 +204,7 @@ This documentation is essential for understanding:
 - Tool call monitoring and error handling
 - Manual agent loops for complex tool workflows
 
-#### Data Streaming with Tools
+### Data Streaming with Tools
 
 **IMPORTANT**: Always read the AI SDK data streaming documentation when working with custom data parts: https://ai-sdk.dev/docs/ai-sdk-ui/streaming-data
 
@@ -223,11 +223,9 @@ This documentation is essential for understanding:
 - Use the `toUIMessageStreamResponse()` method for proper client compatibility
 - Tool results are automatically included in the message parts array
 
-#### Current AI SDK API (v5.0.44+)
+### Multi-Step Tool Execution with stepCountIs()
 
-**IMPORTANT**: The AI SDK API has evolved. Always use current patterns:
-
-##### Multi-Step Tool Execution with `stepCountIs()`
+**IMPORTANT**: The AI SDK API has evolved (v5.0.44+). Always use current patterns:
 
 ```typescript
 const result = streamText({
@@ -238,7 +236,7 @@ const result = streamText({
 });
 ```
 
-##### Tool Choice Strategies
+### Tool Choice Strategies
 
 Control how and when tools are called using the `toolChoice` parameter:
 
@@ -257,18 +255,14 @@ const result = streamText({
 - **`none`**: Disable all tool calls
 - **Specific tool**: Force a particular tool to be called
 
+### Tool Implementation Guidelines
 
-
-#### Tool Implementation Guidelines
-
-- **Structure**: Each tool uses AI SDK's `tool()` function with:
+**Structure**: Each tool uses AI SDK's `tool()` function with:
   - `description`: Clear explanation of the tool's purpose (influences tool selection)
   - `inputSchema`: Zod schema defining input parameters
   - `execute`: Async function performing the tool's action
 
-
-
-#### Tool Call Monitoring
+### Tool Call Monitoring
 
 Add logging in tools to monitor execution:
 
@@ -287,7 +281,7 @@ execute: async ({ query }) => {
 }
 ```
 
-#### Tool Call UI Indicators
+### Tool Call UI Indicators
 
 Display tool execution states using AI Elements:
 
@@ -315,7 +309,7 @@ Display tool execution states using AI Elements:
 })}
 ```
 
-#### Tool Call Best Practices
+### Tool Call Best Practices
 
 - **Clear Descriptions**: Write detailed descriptions to help the model choose the right tool
 - **Specific Input Schemas**: Use descriptive Zod schemas with `.describe()` for parameters
@@ -324,23 +318,26 @@ Display tool execution states using AI Elements:
 - **Return Structure**: Keep return types simple to avoid TypeScript complexity
 - **UI Feedback**: Always show tool execution state using AI Elements components
 
-### UI Components
+## UI Components
 
-- **shadcn/ui** configured with:
-  - New York style
-  - Neutral base color with CSS variables
-  - Import aliases: `@/components`, `@/lib`, `@/lib/utils`, `@/components/ui`, `@/hooks`
-  - Lucide React for icons
-- **AI Elements** from Vercel:
-  - Pre-built components for AI applications
-  - Located in `components/ai-elements/`
-  - Key components: Conversation, Message, PromptInput, Sources, Tool, Reasoning
-  - Supports tool calls, sources, reasoning tokens, and rich message formatting
-  - Reasoning component documentation: https://ai-sdk.dev/elements/components/reasoning#reasoning
-  - Reasoning tokens automatically display as collapsible blocks with duration tracking
+### shadcn/ui Configuration
 
-### Adding Components
+- New York style
+- Neutral base color with CSS variables
+- Import aliases: `@/components`, `@/lib`, `@/lib/utils`, `@/components/ui`, `@/hooks`
+- Lucide React for icons
 
-- shadcn/ui: `pnpm dlx shadcn@latest add [component-name]`
-- AI Elements: `pnpm dlx ai-elements@latest` (adds all components)
+### AI Elements Components
+
+- Pre-built components for AI applications
+- Located in `components/ai-elements/`
+- Available components include: Conversation, Message, PromptInput, Sources, Tool, Reasoning, and more
+- Supports tool calls, sources, reasoning tokens, and rich message formatting
+- Use only the components needed for your specific implementation
+- Documentation: https://ai-sdk.dev/elements/components/reasoning#reasoning
+
+### Adding New Components
+
+- **shadcn/ui**: `pnpm dlx shadcn@latest add [component-name]`
+- **AI Elements**: `pnpm dlx ai-elements@latest` (adds all components)
 
