@@ -191,6 +191,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
                 // Spawn analysis sub-agent with up to 100 rows
                 const analysisResult = await generateText({
                   model: openai('gpt-4o-mini'), // Cost-effective model
+                  // Engineered the AI prompt based on GPT-4o-mini best practices
                   system: `You are a data analysis expert specializing in SQL query result interpretation.
 
 # Task

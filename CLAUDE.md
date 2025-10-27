@@ -41,30 +41,10 @@ This project strictly uses **pnpm**. Do not use npm or yarn.
 ├── components/
 │   ├── chat-panel.tsx              # Chat interface with AI SDK
 │   ├── dataset-tabs.tsx            # Tabbed dataset viewer
-│   ├── history-drawer.tsx          # Artifact search and filter
+│   ├── history-drawer.tsx          # Artifact search and filter (in development)
 │   ├── theme-provider.tsx          # Theme context provider
 │   ├── vega-lite-chart.tsx         # Vega-Lite visualization wrapper
 │   ├── ai-elements/                # AI-powered UI components (currently using: message.tsx, tool.tsx)
-│   │   ├── actions.tsx             # Tool action buttons
-│   │   ├── artifact.tsx            # Artifact display
-│   │   ├── branch.tsx              # Message branching
-│   │   ├── chain-of-thought.tsx    # Reasoning display
-│   │   ├── code-block.tsx          # Code syntax highlighting
-│   │   ├── context.tsx             # Context display
-│   │   ├── conversation.tsx        # Conversation view
-│   │   ├── image.tsx               # Image rendering
-│   │   ├── inline-citation.tsx     # Inline citations
-│   │   ├── loader.tsx              # Loading states
-│   │   ├── message.tsx             # Message component (actively used)
-│   │   ├── open-in-chat.tsx        # Open artifact in chat
-│   │   ├── prompt-input.tsx        # Chat input
-│   │   ├── reasoning.tsx           # AI reasoning display
-│   │   ├── response.tsx            # Response component
-│   │   ├── sources.tsx             # Source attribution
-│   │   ├── suggestion.tsx          # Suggestion chips
-│   │   ├── task.tsx                # Task display
-│   │   ├── tool.tsx                # Tool call display (actively used)
-│   │   └── web-preview.tsx         # Web preview
 │   ├── tabs/
 │   │   ├── charts-tab.tsx          # Visualization gallery
 │   │   ├── preview-tab.tsx         # Data preview table
@@ -72,26 +52,6 @@ This project strictly uses **pnpm**. Do not use npm or yarn.
 │   │   ├── schema-tab.tsx          # Schema browser
 │   │   └── sql-tab.tsx             # Query history
 │   └── ui/                         # shadcn/ui component library
-│       ├── avatar.tsx
-│       ├── badge.tsx
-│       ├── button.tsx
-│       ├── card.tsx
-│       ├── carousel.tsx
-│       ├── collapsible.tsx
-│       ├── dialog.tsx
-│       ├── dropdown-menu.tsx
-│       ├── hover-card.tsx
-│       ├── input.tsx
-│       ├── label.tsx
-│       ├── progress.tsx
-│       ├── resizable.tsx
-│       ├── scroll-area.tsx
-│       ├── select.tsx
-│       ├── sheet.tsx
-│       ├── table.tsx
-│       ├── tabs.tsx
-│       ├── textarea.tsx
-│       └── tooltip.tsx
 ├── lib/
 │   ├── postgres.ts                 # Direct Postgres connection
 │   ├── session-cleanup.ts          # Session management utilities
@@ -106,12 +66,6 @@ This project strictly uses **pnpm**. Do not use npm or yarn.
 │   └── initialize_database.sql     # Database initialization
 ├── styles/
 │   └── globals.css                 # Global stylesheet
-├── public/
-│   ├── placeholder-logo.png
-│   ├── placeholder-logo.svg
-│   ├── placeholder-user.jpg
-│   ├── placeholder.jpg
-│   └── placeholder.svg
 ├── components.json                 # shadcn/ui configuration
 ├── next.config.mjs                 # Next.js configuration
 ├── postcss.config.mjs              # PostCSS configuration

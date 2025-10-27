@@ -26,7 +26,8 @@ export function DatasetTabs({ datasetId, reportContent, onGenerateReport, isGene
       {/* Header with History button */}
       <div className="flex items-center justify-between border-b bg-background p-4">
         <h2 className="text-lg font-semibold">Dataset</h2>
-        <HistoryDrawer datasetId={datasetId} />
+        {/* History button disabled - code preserved in history-drawer.tsx for future use */}
+        {/* <HistoryDrawer datasetId={datasetId} /> */}
       </div>
 
       {/* Tabs */}
