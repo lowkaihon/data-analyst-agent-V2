@@ -109,8 +109,11 @@ export async function POST(req: NextRequest) {
       reasoning: run.insight,
     }))
 
-    // Count charts
+    // Build detailed chart catalog
     const charts = runs.filter((r) => r.type === "chart")
+    const chartCatalog = charts.length > 0
+      ? charts.map((chart, idx) => `Chart ${idx + 1}: ${chart.insight || "Untitled Visualization"}`).join("\n")
+      : ""
 
     // Build exploration summary from insights
     const insights = runs.filter((r) => r.insight).map((r) => r.insight)
@@ -193,7 +196,7 @@ ${item.result.rows.length > 5 ? `\n(${item.result.rows.length - 5} additional ro
   )
   .join("\n")}
 
-${charts.length > 0 ? `\n--- Visualizations ---\n${charts.length} chart(s) were created during analysis\n` : ""}
+${chartCatalog ? `\n--- Available Visualizations ---\n${chartCatalog}\n\nThese visualizations provide supporting evidence for patterns in the data. Reference them by number when discussing trends or patterns (e.g., "see Chart 2: Revenue Trend Over Time"). While you cannot embed the actual charts in the markdown report, explicitly referencing them helps readers locate relevant visualizations in the Charts tab.\n` : ""}
 </DATA_SOURCES>
 
 <TASK>
@@ -214,6 +217,7 @@ Your report MUST include these four sections:
    - Include exact values, percentages, trends, comparisons, and patterns
    - Identify anomalies, correlations, and statistically significant patterns
    - Reference specific queries by number (e.g., "Query 3 revealed...")
+   - When relevant, reference visualizations by number (e.g., "as shown in Chart 2: Revenue Trend Over Time") to help readers locate supporting visual evidence in the Charts tab
 
 3. Actionable Insights & Recommendations
    For EACH major finding, provide a structured recommendation:
@@ -251,7 +255,11 @@ DO NOT:
 - Fabricate or extrapolate data beyond what's provided in the SQL results
 - Create generic reports that could apply to any dataset
 - Overlook outliers, anomalies, or unexpected patterns in the data
-</CONSTRAINTS>
+
+DO:
+- Reference available visualizations by number when discussing visual patterns or trends
+- Use chart references to help readers locate supporting evidence (e.g., "see Chart 3: Customer Segmentation")
+- Make it clear that charts are available in a separate Charts tab for visual confirmation
 
 <REASONING_APPROACH>
 Before writing the report, mentally execute these steps:

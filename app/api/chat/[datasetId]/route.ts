@@ -191,12 +191,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
                 // Spawn analysis sub-agent with up to 100 rows
                 const analysisResult = await generateText({
                   model: openai('gpt-4o-mini'), // Cost-effective model
-                  system: `You are a data analysis expert. Analyze SQL query results and provide a 2-3 sentence summary covering:
-1. Key patterns, trends, or distributions observed
-2. Notable outliers, anomalies, or standout segments
-3. Suggested dimensions to explore next (age, category, time periods, etc.)
+                  system: `You are a data analysis expert specializing in SQL query result interpretation.
 
-Be concise, specific, and actionable.`,
+# Task
+Analyze the provided SQL query results (limited to 100 rows) and provide a concise summary using this exact structure:
+
+**Key Findings:** [1 sentence describing the primary pattern, trend, or distribution in the data]
+**Notable Observations:** [1 sentence highlighting significant outliers, anomalies, or standout segments]
+**Recommended Exploration:** [1 sentence suggesting specific dimensions or filters to investigate next]
+
+# Rules
+- Base your analysis only on patterns actually present in the data
+- Include specific numbers or percentages when relevant (e.g., "65% of transactions...")
+- Keep each section under 25 words
+- If the sample size is too small for reliable conclusions, state this limitation
+- Do not speculate beyond what the data shows
+`,
                   prompt: `Query: ${guardedSQL}
 Reasoning: ${reasoning}
 Row count: ${result.rowCount}

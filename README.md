@@ -32,9 +32,28 @@ An AI-powered data analysis platform that enables interactive exploration of CSV
 - **Timeline View**: Organized by chat turns for easy navigation
 
 ### 📝 Report Generation
-- Automatically compiles pinned insights and charts into structured markdown
-- Includes executive summary, key findings, visualizations, and methodology
-- Downloadable for sharing and documentation
+
+Generate comprehensive business intelligence reports powered by GPT-5 using data from your analysis artifacts.
+
+**Data Sources (up to 50 items total):**
+- **Pinned runs**: All pinned queries and charts are guaranteed inclusion (added first)
+- **Recent runs**: Recent successful runs fill remaining slots up to 50 total
+- **Smart prioritization**: Pin important insights to ensure they appear in the report
+
+**What's included from each artifact:**
+- **SQL queries**: Query text, reasoning, 5-row sample preview, and AI analysis summary
+  - *Token efficiency*: Only 5 rows shown per query, but includes AI analysis text generated from full results (up to 100 rows analyzed by sub-agent)
+- **Charts**: Numbered catalog with titles (e.g., "Chart 3: Revenue Trend Over Time") for easy reference
+- **Insights**: One-sentence findings from each analysis step
+- **AI summaries**: Full analysis text from chat responses (especially valuable from deep-dive mode)
+
+**Report structure:**
+- **Executive Summary**: 3-5 actionable insights that decision-makers can act on immediately
+- **Key Findings**: Discoveries with specific data, concrete numbers, and evidence
+- **Actionable Recommendations**: Structured recommendations with priority levels, expected impact, and success metrics
+- **Methodology & Limitations**: Analysis approach, data quality issues, and assumptions
+
+**Export**: Download as markdown for sharing with stakeholders or documentation
 
 ## Tech Stack
 
@@ -184,6 +203,69 @@ The agentic approach allows GPT-5-mini to adapt its exploration strategy to each
 - Focused single-dimension queries
 - Verifying specific metrics or values
 - Simple data lookups
+
+### Context Sharing Between Modes
+
+**All modes share the same conversation history.** When you switch between normal and deep dive modes, the AI retains full context including:
+
+✅ All previous questions and answers
+✅ All SQL queries executed (from any mode)
+✅ All query results and analyses
+✅ All charts created
+✅ All insights and findings
+
+**Example Workflow:**
+
+```
+1. Normal Mode: "What is average revenue by region?"
+   → AI runs Query 1, creates Chart 1
+   → Response: "West: $2.5M, East: $1.8M, South: $1.2M"
+
+2. Deep Dive: Click "Deep Dive" button
+   → AI runs comprehensive 25-step analysis (Query 2-26)
+   → Creates 6 detailed charts (Chart 2-7)
+   → Explores segments, trends, correlations, outliers
+   → Summary: "West grew 45%, East declined 12%, South stable..."
+
+3. Normal Mode: "Why did East decline?"
+   → AI responds: "From the deep dive analysis (Query 18, Chart 4),
+      East region lost 3 major accounts in Q4, reducing volume by
+      2,300 units. This accounts for 87% of the decline."
+```
+
+**The AI can explicitly reference:**
+- Specific queries by number: "From Query 18..."
+- Specific charts: "See Chart 5: Regional Performance..."
+- Previous insights: "Building on the earlier finding that..."
+- Cross-mode findings: "The deep dive revealed..." (when in normal mode)
+
+**Sequential Deep Dives:**
+
+If you run multiple deep dives, each one sees all previous work:
+
+```
+Deep Dive 1: Explores revenue patterns (25 queries, 6 charts)
+Deep Dive 2: "Building on previous analysis (Query 1-25), now exploring
+              customer churn patterns..." (adds 20 new queries)
+```
+
+The second deep dive recognizes previous work and avoids redundant exploration.
+
+**Important Limitations:**
+
+⚠️ **Session-Based Only**: Context only persists within a single chat session. If you refresh the page, close the browser, or start analyzing a new dataset, the conversation history resets.
+
+**To preserve findings:**
+- Use the **"Generate Report"** button to compile all insights into a downloadable markdown report
+- **Pin important artifacts** (queries/charts) before generating reports
+- Reports include references to up to 50 pinned/recent artifacts
+
+⚠️ **Token Limits**: After extensive analysis (especially multiple deep dives), the conversation history can approach model context limits (~100K-200K tokens).
+
+**When approaching limits:**
+- Generate a report to summarize current findings
+- Start a new chat session for orthogonal analysis directions
+- Focus on pinned artifacts to preserve the most important visualizations
 
 **Example Deep Dive Customizations:**
 

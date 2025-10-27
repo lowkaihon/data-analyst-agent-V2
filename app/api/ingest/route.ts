@@ -101,6 +101,7 @@ export async function POST(req: NextRequest) {
     const { data: dataset, error: datasetError } = await supabase
       .from("datasets")
       .insert({
+        id: tempId,
         file_name: file.name,
         user_context: context || null,
         table_name: tableName,
