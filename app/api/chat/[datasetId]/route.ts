@@ -325,7 +325,11 @@ Format your response with:
 
           // Check actual row count to determine if we need special handling
           // Build a COUNT query by wrapping the original SQL
-          const countSQL = `SELECT COUNT(*) FROM (${sqlQuery.replace(/;?\s*$/, '')}) as subquery`
+          // Strip LIMIT/OFFSET clauses to get the true row count
+          const sqlWithoutLimit = sqlQuery
+            .replace(/;?\s*$/, '')
+            .replace(/\s+LIMIT\s+\d+(\s+OFFSET\s+\d+)?/gi, '')
+          const countSQL = `SELECT COUNT(*) FROM (${sqlWithoutLimit}) as subquery`
           const countResult = await pool.query(countSQL)
           const totalRows = Number.parseInt(countResult.rows[0].count, 10)
 
@@ -968,12 +972,38 @@ Rows: ${dataset.row_count}, Columns: ${dataset.column_count}
 </dataset>
 
 <task>
-Perform thorough analysis using SQL queries and visualizations. Explore major dimensions, patterns, outliers, and feature interactions. Validate key findings. Deliver 3-5 actionable insights with strong evidence.
+Goal: Deliver comprehensive analysis with 3-5 actionable insights backed by strong evidence.
 
-Step budget: You have 30 steps available. Typical comprehensive analysis uses 20-30 steps. Be thorough - this is deep-dive mode, not quick Q&A. One step may include parallel tool calls (e.g., executeSQLQuery + createChart simultaneously).
+"Comprehensive" means exploring until additional queries would yield only marginal new insights. This typically requires 20-30 steps covering:
+- Obvious patterns and hidden interactions
+- Major segments and surprising edge cases
+- Initial findings and validation queries
 
-IMPORTANT: You are starting fresh with this deep-dive analysis. Previous chat history is not available. The user has provided all necessary context in their request above. Focus on the dataset and user's stated objectives.
+Step budget: 30 steps available. Keep exploring until you've covered:
+- Single dimensions (individual columns)
+- Cross-tabulations: When single dimensions show large variance within categories, multiple strong predictors, or surprising outliers → test interactions between them
+- Interaction validation: Test if high-performing patterns are driven by feature combinations
+- Validation queries (test surprising findings)
+- 5-7 visualizations for major patterns
+
+This depth typically requires 20-30 steps.
+
+One step may include parallel tool calls (e.g., executeSQLQuery + createChart simultaneously).
+
+IMPORTANT: You are starting fresh with this deep-dive analysis. Previous chat history is not available. Focus on the dataset and user's stated objectives.
 </task>
+
+<exploration_approach>
+After covering single dimensions, let findings guide next exploration:
+
+Triggers for cross-tabulations:
+- Large variance within a category → drill into why (test with other features)
+- Multiple strong predictors identified → test if they interact
+- Surprising outliers or anomalies → validate with cross-tabulations
+- High-performing segment found → confirm it's not driven by confounding feature
+
+Continue until major patterns are validated through interactions. Create 5-7 visualizations for key findings.
+</exploration_approach>
 
 <tools>
 executeSQLQuery: Execute SELECT query against dataset. Returns {success, queryId, rowCount, preview, analysis}. Use 'analysis' field for insights from full results.
@@ -986,19 +1016,23 @@ Returns {success, chartSpec, error}.
 <sql_rules>
 PostgreSQL dialect - SELECT only against \`${dataset.table_name}\`:
 
-1. CTE & Grouping: Use CTE named 'base' for derived fields (CASE, calculated columns). GROUP BY ordinals (1,2,3) or alias names from base CTE. Quote reserved words ("default", "user", "order").
-2. Query limits: LIMIT ≤ 1500. No semicolons.
-3. PostgreSQL functions: || for concat. DATE_TRUNC()/EXTRACT() for temporal. FILTER (WHERE) for conditional aggregations.
-4. Type safety: Booleans as CASE WHEN y THEN 1.0 ELSE 0.0 END. Use NULLIF for divide-by-zero protection. No mixed types in IN().
-5. Filtering: WHERE filters rows before aggregation. HAVING filters aggregated results.
-6. ORDER BY: Only at outermost SELECT (unless CTE needs LIMIT).
+1. CTE Usage: Use CTE named 'base' for CASE expressions or derived fields, then SELECT from base (never from original table). If CTE uses aggregation (COUNT, SUM, AVG, MIN, MAX), it MUST have GROUP BY clause.
+2. Grouping: GROUP BY using ordinals (1,2,3) or CTE alias names. Never GROUP BY same-query SELECT aliases.
+3. Query Limits: Always end with LIMIT ≤ 1500. Never use semicolons.
+4. Functions: String concat (||), dates (DATE_TRUNC, EXTRACT, TO_TIMESTAMP, ::date), conditional aggregations (FILTER WHERE).
+5. Date Constraints: Never use Oracle functions (to_date). Never cast temporal types to integers. Use EXTRACT(MONTH/YEAR FROM col) for numeric date components.
+6. Rate Calculations: Use AVG(CASE WHEN condition THEN 1.0 ELSE 0.0 END). Prevent divide-by-zero with NULLIF.
+7. Reserved Words: Quote reserved columns ("default", "user", "order") or alias in base CTE (SELECT "default" AS is_default).
+8. Filtering: Use WHERE to filter rows before aggregation. Use HAVING to filter aggregated results.
+9. Custom Sort: Add order column in base CTE, or use ARRAY_POSITION(ARRAY['A','B'], col). For months: ARRAY_POSITION(ARRAY['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'], LOWER(month_col)).
+10. Boolean Handling: Treat boolean columns as boolean. Use CASE WHEN bool_col THEN 1.0 ELSE 0.0 END or bool_col IS TRUE. Never compare booleans to numbers/strings or use IN (...) with mixed types.
 </sql_rules>
 
 <output_format>
 Deliver analysis in two sections:
 
 === EXECUTIVE SUMMARY ===
-[3-5 key insights in max 10 sentences with evidence inline]
+3-5 key insights with evidence inline (max 10 sentences).
 
 See Charts tab for visualizations and SQL tab for detailed queries.
 
@@ -1007,26 +1041,22 @@ You might also explore:
 
 === DETAILED ANALYSIS ===
 
+Structure detailed analysis with these sections:
+
 Key Findings:
 [Numbered list with evidence, metrics, sample sizes]
 
-Validation Performed:
-[Numbered list of checks run and results]
-
-Hypothesis Tests & Segment Drills:
-[Numbered list of tests performed and findings]
+Validation & Hypothesis Tests:
+[Numbered list of checks and results]
 
 Standout Segments:
-[Numbered list of segments with size and key metrics]
+[Numbered list with size and key metrics]
 
 Limitations & Data Quality:
 [Numbered list of caveats and data issues]
 
-Constraints:
-• Plain text only (no markdown, code blocks, tables)
-• Use numbered lists with periods
-• Use exact section headers
-• Stop after Limitations section - no additional recommendations or sections
+Create 5-7 charts for major patterns. Use plain text with numbered lists. No markdown formatting.
+STOP after detailed analysis - do not add recommendations or other sections.
 </output_format>`
 
     // Normal Mode
@@ -1130,20 +1160,29 @@ Data Volume Best Practices:
 
 # SQL TECHNICAL CONSTRAINTS
 
+<sql_rules>
 PostgreSQL dialect - SELECT only against \`${dataset.table_name}\`:
 
-1. **Derived Fields**: Use CTE named 'base' for CASE expressions, then SELECT from base. GROUP BY alias names or ordinals.
-2. **Ordinal Grouping**: Without CTE, use GROUP BY 1,2,3 matching SELECT column order.
-3. **Alias Scope**: SELECT aliases are valid in ORDER BY only, not in WHERE/GROUP BY/HAVING. Use CTE or ordinals (GROUP BY 1,2) instead.
-4. **Query Limits**: Always end with LIMIT ≤ 1500. Never use semicolons.
-5. **Functions**: String concat (|| operator), dates (DATE_TRUNC, EXTRACT), conditional aggregations (FILTER WHERE).
-6. **Rate Calculations**: Use AVG(CASE WHEN condition THEN 1.0 ELSE 0.0 END). Prevent divide-by-zero with NULLIF.
-7. **Reserved Words**: Quote reserved columns ("default", "user", "order") or alias in base CTE (SELECT "default" AS is_default).
-8. **Filter Hierarchy**: WHERE = row filters before aggregation; HAVING = filters on aggregated results.
-9. **Custom Sort**: Add order column in base CTE, or use ARRAY_POSITION(ARRAY['A','B'], col).
-10. **Time Series**: Use DATE_TRUNC(...) AS period in base, GROUP BY 1, ORDER BY 1.
-11. **Boolean Handling**: Treat boolean columns as boolean. Use CASE WHEN bool_col THEN 1.0 ELSE 0.0 END or bool_col IS TRUE. Never compare booleans to numbers/strings or use IN (...) with mixed types.
-12. **CTE Ordering**: Do not use ORDER BY inside CTEs unless paired with LIMIT. Apply ordering at outermost SELECT.
+1. CTE Usage: Use CTE named 'base' for CASE expressions or derived fields, then SELECT from base (never from original table). If CTE uses aggregation (COUNT, SUM, AVG, MIN, MAX), it MUST have GROUP BY clause.
+2. Grouping: GROUP BY using ordinals (1,2,3) or CTE alias names. Never GROUP BY same-query SELECT aliases.
+3. Query Limits: Always end with LIMIT ≤ 1500. Never use semicolons.
+4. Functions: String concat (||), dates (DATE_TRUNC, EXTRACT, TO_TIMESTAMP, ::date), conditional aggregations (FILTER WHERE).
+5. Date Constraints: Never use Oracle functions (to_date). Never cast temporal types to integers. Use EXTRACT(MONTH/YEAR FROM col) for numeric date components.
+6. Rate Calculations: Use AVG(CASE WHEN condition THEN 1.0 ELSE 0.0 END). Prevent divide-by-zero with NULLIF.
+7. Reserved Words: Quote reserved columns ("default", "user", "order") or alias in base CTE (SELECT "default" AS is_default).
+8. Filtering: Use WHERE to filter rows before aggregation. Use HAVING to filter aggregated results.
+9. Custom Sort: Add order column in base CTE, or use ARRAY_POSITION(ARRAY['A','B'], col). For months: ARRAY_POSITION(ARRAY['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'], LOWER(month_col)).
+10. Boolean Handling: Treat boolean columns as boolean. Use CASE WHEN bool_col THEN 1.0 ELSE 0.0 END or bool_col IS TRUE. Never compare booleans to numbers/strings or use IN (...) with mixed types.
+</sql_rules>
+
+<validation_protocol>
+Before returning any query:
+1. Verify it follows all 10 rules above
+2. Check for unused CTEs or missing GROUP BY in aggregations
+3. Confirm LIMIT ≤ 1500 is present
+4. Ensure no Oracle functions or invalid type casts
+If validation fails, revise the query until it passes all checks.
+</validation_protocol>
 
 # OUTPUT FORMAT
 
