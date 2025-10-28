@@ -16,17 +16,35 @@ import {
   WrenchIcon,
   XCircleIcon,
 } from "lucide-react";
-import type { ComponentProps, ReactNode } from "react";
+import React, { createContext, useContext, useState, useMemo, type ComponentProps, type ReactNode } from "react";
 import { CodeBlock } from "./code-block";
 
-export type ToolProps = ComponentProps<typeof Collapsible>;
+// Context to track if tool is open (for lazy rendering)
+const ToolOpenContext = createContext<boolean>(false);
 
-export const Tool = ({ className, ...props }: ToolProps) => (
-  <Collapsible
-    className={cn("not-prose mb-4 w-full rounded-md border", className)}
-    {...props}
-  />
-);
+export type ToolProps = ComponentProps<typeof Collapsible> & {
+  lazyRender?: boolean; // Default true for performance
+};
+
+export const Tool = React.memo(({ className, defaultOpen = false, lazyRender = true, onOpenChange, ...props }: ToolProps) => {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+
+  const handleOpenChange = (open: boolean) => {
+    setIsOpen(open);
+    onOpenChange?.(open);
+  };
+
+  return (
+    <ToolOpenContext.Provider value={lazyRender ? isOpen : true}>
+      <Collapsible
+        className={cn("not-prose mb-4 w-full rounded-md border", className)}
+        defaultOpen={defaultOpen}
+        onOpenChange={handleOpenChange}
+        {...props}
+      />
+    </ToolOpenContext.Provider>
+  );
+});
 
 export type ToolHeaderProps = {
   type: ToolUIPart["type"];
@@ -57,7 +75,7 @@ const getStatusBadge = (status: ToolUIPart["state"]) => {
   );
 };
 
-export const ToolHeader = ({
+export const ToolHeader = React.memo(({
   className,
   type,
   state,
@@ -77,58 +95,77 @@ export const ToolHeader = ({
     </div>
     <ChevronDownIcon className="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
   </CollapsibleTrigger>
-);
+));
 
 export type ToolContentProps = ComponentProps<typeof CollapsibleContent>;
 
-export const ToolContent = ({ className, ...props }: ToolContentProps) => (
-  <CollapsibleContent
-    className={cn(
-      "data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-popover-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in",
-      className
-    )}
-    {...props}
-  />
-);
+export const ToolContent = React.memo(({ className, children, ...props }: ToolContentProps) => {
+  const isOpen = useContext(ToolOpenContext);
+
+  return (
+    <CollapsibleContent
+      className={cn(
+        "data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-popover-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in",
+        className
+      )}
+      {...props}
+    >
+      {/* Only render children when open to avoid expensive operations on collapsed tools */}
+      {isOpen ? children : null}
+    </CollapsibleContent>
+  );
+});
 
 export type ToolInputProps = ComponentProps<"div"> & {
   input: any;
 };
 
-export const ToolInput = ({ className, input, ...props }: ToolInputProps) => (
-  <div className={cn("space-y-2 overflow-hidden p-4", className)} {...props}>
-    <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
-      Parameters
-    </h4>
-    <div className="rounded-md bg-muted/50">
-      <CodeBlock code={JSON.stringify(input, null, 2)} language="json" />
+export const ToolInput = React.memo(({ className, input, ...props }: ToolInputProps) => {
+  // Memoize JSON.stringify to avoid recomputing on every render
+  const stringifiedInput = useMemo(() => JSON.stringify(input, null, 2), [input]);
+
+  return (
+    <div className={cn("space-y-2 overflow-hidden p-4", className)} {...props}>
+      <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+        Parameters
+      </h4>
+      <div className="rounded-md bg-muted/50">
+        <CodeBlock code={stringifiedInput} language="json" />
+      </div>
     </div>
-  </div>
-);
+  );
+});
 
 export type ToolOutputProps = ComponentProps<"div"> & {
   output: any;
   errorText?: string;
 };
 
-export const ToolOutput = ({
+export const ToolOutput = React.memo(({
   className,
   output,
   errorText,
   ...props
 }: ToolOutputProps) => {
+  // Memoize JSON.stringify to avoid recomputing on every render
+  const Output = useMemo(() => {
+    if (!(output || errorText)) {
+      return null;
+    }
+
+    if (typeof output === "object") {
+      return (
+        <CodeBlock code={JSON.stringify(output, null, 2)} language="json" />
+      );
+    } else if (typeof output === "string") {
+      return <CodeBlock code={output} language="json" />;
+    }
+
+    return <div>{output as ReactNode}</div>;
+  }, [output, errorText]);
+
   if (!(output || errorText)) {
     return null;
-  }
-
-  let Output = <div>{output as ReactNode}</div>;
-
-  if (typeof output === "object") {
-    Output = (
-      <CodeBlock code={JSON.stringify(output, null, 2)} language="json" />
-    );
-  } else if (typeof output === "string") {
-    Output = <CodeBlock code={output} language="json" />;
   }
 
   return (
@@ -149,4 +186,4 @@ export const ToolOutput = ({
       </div>
     </div>
   );
-};
+});

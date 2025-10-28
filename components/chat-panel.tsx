@@ -97,8 +97,8 @@ export function ChatPanel({ datasetId, onGenerateReport, isGeneratingReport, onS
     return () => scrollContainer.removeEventListener("scroll", handleScroll)
   }, [])
 
-  // Auto-scroll to bottom when messages change (improved to prevent flickering)
-  useLayoutEffect(() => {
+  // Auto-scroll to bottom when messages change (non-blocking for better performance)
+  useEffect(() => {
     const scrollContainer = scrollContainerRef.current
     const messagesEnd = messagesEndRef.current
 
