@@ -5,7 +5,11 @@ import { getPostgresPool } from "@/lib/postgres"
 import { guardSQL } from "@/lib/sql-guard"
 import { createServerClient } from "@/lib/supabase/server"
 
-export const maxDuration = 180
+export const maxDuration = 300
+
+// Query timeout constants
+const QUERY_TIMEOUT_NORMAL_MS = 30000 // 30 seconds
+const QUERY_TIMEOUT_DEEP_DIVE_MS = 60000 // 60 seconds
 
 export async function POST(req: Request, { params }: { params: Promise<{ datasetId: string }> }) {
   try {
@@ -156,7 +160,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
           try {
             // Guard SQL to ensure it's SELECT-only and add LIMIT
             const guardedSQL = guardSQL(query, dataset.table_name, 1500)
-            const result = await pool.query(guardedSQL)
+
+            // Apply timeout based on mode
+            const queryTimeout = isDeepDive ? QUERY_TIMEOUT_DEEP_DIVE_MS : QUERY_TIMEOUT_NORMAL_MS
+            const queryPromise = pool.query(guardedSQL)
+            const timeoutPromise = new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error(`Query timeout after ${queryTimeout / 1000}s. Try simplifying the query or reducing the data range.`)), queryTimeout)
+            )
+
+            const result = await Promise.race([queryPromise, timeoutPromise])
             const durationMs = Date.now() - startTime
 
             // Store in runs table with correct schema
@@ -270,24 +282,26 @@ Format your response with:
       }),
 
       createChart: tool({
-        description: `Create Vega-Lite chart from query results. Use queryId from executeSQLQuery.`,
+        description: `Create Vega-Lite chart from query results. Automatically fetches optimal data amount based on chart type. Use queryId from executeSQLQuery.`,
         inputSchema: z.object({
           queryId: z.string().describe("QueryId from executeSQLQuery"),
-          chartType: z.enum(["bar", "line", "scatter", "area", "pie"]).describe("bar: categories/rankings, line: ordered/time-series, scatter: correlations, area: cumulative, pie: proportions (3-5 categories only)"),
+          chartType: z.enum(["bar", "line", "scatter", "area", "pie", "boxplot"]).describe("bar: categorical x + quantitative y (comparisons), line: temporal/ordered x + quantitative y (trends), scatter: quantitative x + quantitative y (correlations), area: temporal x + quantitative y (cumulative), pie: categorical (3-7 categories), boxplot: categorical x + quantitative y (distributions)"),
           xField: z.string().describe("Column for x-axis (must exist in query results)"),
           yField: z.string().describe("Column for y-axis (must exist in query results)"),
           title: z.string().describe("Descriptive title explaining the insight"),
+          subtitle: z.string().optional().describe("Optional subtitle for additional context"),
           xAxisLabel: z.string().optional().describe("Custom x-axis label (default: xField name)"),
           yAxisLabel: z.string().optional().describe("Custom y-axis label (default: yField name)"),
+          colorField: z.string().optional().describe("Optional field to color by (categorical, not for pie/boxplot charts)"),
         }),
-        execute: async ({ queryId, chartType, xField, yField, title, xAxisLabel, yAxisLabel }) => {
+        execute: async ({ queryId, chartType, xField, yField, title, subtitle, xAxisLabel, yAxisLabel, colorField }) => {
           console.log("Generating chart:", chartType, "for queryId:", queryId)
 
-          // Fetch data from runs table using queryId
+          // Fetch original SQL from runs table
           const supabaseClient = await createServerClient()
           const { data: runData, error: fetchError } = await supabaseClient
             .from("runs")
-            .select("sample, sql, columns")
+            .select("sql, columns")
             .eq("id", queryId)
             .single()
 
@@ -299,9 +313,24 @@ Format your response with:
             }
           }
 
-          const data = runData.sample as any[]
           const sqlQuery = runData.sql as string
           const columns = runData.columns as string[]
+
+          // Determine chart-type-specific limit for optimal visualization
+          const chartLimit = chartType === "boxplot" ? 10000
+                           : ["scatter", "line", "area"].includes(chartType) ? 5000
+                           : 1500
+
+          console.log(`Re-querying with ${chartLimit} row limit for ${chartType} chart`)
+
+          // Re-execute query with optimal limit
+          const guardedSQL = guardSQL(sqlQuery, dataset.table_name, chartLimit)
+
+          const startTime = Date.now()
+          const queryResult = await pool.query(guardedSQL)
+          const durationMs = Date.now() - startTime
+
+          const data = queryResult.rows
 
           if (!data || data.length === 0) {
             return {
@@ -310,7 +339,7 @@ Format your response with:
             }
           }
 
-          console.log("Fetched", data.length, "rows for visualization")
+          console.log("Fetched", data.length, "rows for visualization (limit:", chartLimit, ")")
 
           // Use shared configuration for consistency
           const { VEGA_BASE_CONFIG, CHART_CONSTRAINTS } = await import("@/lib/vega-config")
@@ -339,10 +368,13 @@ Format your response with:
           // Base spec with accessibility and data handling best practices
           let spec: any = {
             $schema: "https://vega.github.io/schema/vega-lite/v5.json",
-            title,
-            description: title, // For ARIA labels and screen readers
-            width: CHART_CONSTRAINTS.DEFAULT_WIDTH,
+            description: `${title}. ${chartType} chart showing ${yAxisLabel || yField} by ${xAxisLabel || xField}`, // Enhanced screen reader description
+            width: "container" as any, // Responsive to zoom and resize
             height: CHART_CONSTRAINTS.DEFAULT_HEIGHT,
+            autosize: {
+              type: "fit" as const,
+              contains: "padding" as const,
+            },
             data: { values: data },
             config: VEGA_BASE_CONFIG,
           }
@@ -354,25 +386,55 @@ Format your response with:
               cornerRadiusEnd: 4,
               tooltip: true,
               invalid: "filter", // Exclude null/NaN values
+              ...(data.length > 20 && { discreteBandSize: 25 }), // Thinner bars for many categories
             }
             spec.encoding = {
               x: {
                 field: xField,
                 type: xType,
-                axis: { labelAngle: 0, title: xAxisLabel || xField },
+                axis: {
+                  title: xAxisLabel || xField,
+                  labelAngle: xType === "nominal" && data.length > 8 ? -45 : 0,
+                  labelOverlap: "greedy",
+                  labelPadding: 5,
+                  labelLimit: 100,
+                },
               },
               y: {
                 field: yField,
                 type: "quantitative",
-                axis: { format: yAxisFormat, title: yAxisLabel || yField },
+                axis: {
+                  format: yAxisFormat,
+                  title: yAxisLabel || yField,
+                },
               },
-              color: { value: "#4c78a8" },
+              ...(colorField ? {
+                color: {
+                  field: colorField,
+                  type: "nominal",
+                  scale: { scheme: "tableau10" },
+                  legend: {
+                    title: colorField,
+                    titleFontSize: 12,
+                    labelFontSize: 11,
+                    labelLimit: 150,
+                    symbolSize: 100,
+                  },
+                },
+              } : {
+                color: { value: "#1f77b4" }, // Tableau10 blue - colorblind-safe
+              }),
               tooltip: [
-                { field: xField, type: xType },
-                { field: yField, type: "quantitative", format: tooltipFormat },
+                { field: xField, type: xType, title: xAxisLabel || xField, ...(isXTemporal && { format: "%B %d, %Y" }) },
+                { field: yField, type: "quantitative", title: yAxisLabel || yField, format: tooltipFormat },
+                ...(colorField ? [{ field: colorField, type: "nominal", title: colorField }] : []),
               ],
             }
           } else if (chartType === "line") {
+            // Determine x-axis label angle based on data density
+            const uniqueXCount = new Set(data.map(d => d[xField])).size
+            const xLabelAngle = uniqueXCount > 10 ? -45 : 0
+
             spec.mark = {
               type: "line",
               point: true,
@@ -384,17 +446,34 @@ Format your response with:
               x: {
                 field: xField,
                 type: xType,
-                axis: { title: xAxisLabel || xField, labelAngle: -45 },
+                axis: {
+                  title: xAxisLabel || xField,
+                  labelAngle: xLabelAngle,
+                  labelOverlap: "greedy" as const, // Prevent label overlap
+                  labelPadding: 5,
+                  labelLimit: 100,
+                },
               },
               y: {
                 field: yField,
                 type: "quantitative",
                 axis: { format: yAxisFormat, title: yAxisLabel || yField },
               },
-              color: { value: "#4c78a8" },
+              // Optional color encoding by field
+              ...(colorField ? {
+                color: {
+                  field: colorField,
+                  type: "nominal" as const,
+                  scale: { scheme: "tableau10" }, // Colorblind-safe palette
+                  legend: { title: colorField },
+                },
+              } : {
+                color: { value: "#1f77b4" }, // Tableau10 blue - colorblind-safe
+              }),
               tooltip: [
-                { field: xField, type: xType },
-                { field: yField, type: "quantitative", format: tooltipFormat },
+                { field: xField, type: xType, title: xAxisLabel || xField, ...(isXTemporal && { format: "%B %d, %Y" }) },
+                { field: yField, type: "quantitative", title: yAxisLabel || yField, format: tooltipFormat },
+                ...(colorField ? [{ field: colorField, type: "nominal", title: colorField }] : []),
               ],
             }
           } else if (chartType === "scatter") {
@@ -409,20 +488,47 @@ Format your response with:
               x: {
                 field: xField,
                 type: "quantitative",
-                axis: { format: yAxisFormat, title: xAxisLabel || xField },
+                axis: {
+                  format: yAxisFormat,
+                  title: xAxisLabel || xField,
+                  labelOverlap: "greedy" as const,
+                  labelPadding: 5,
+                  labelLimit: 100,
+                },
               },
               y: {
                 field: yField,
                 type: "quantitative",
-                axis: { format: yAxisFormat, title: yAxisLabel || yField },
+                axis: {
+                  format: yAxisFormat,
+                  title: yAxisLabel || yField,
+                  labelOverlap: "greedy" as const,
+                  labelPadding: 5,
+                  labelLimit: 100,
+                },
               },
-              color: { value: "#4c78a8" },
+              // Optional color encoding by field
+              ...(colorField ? {
+                color: {
+                  field: colorField,
+                  type: "nominal" as const,
+                  scale: { scheme: "tableau10" }, // Colorblind-safe palette
+                  legend: { title: colorField },
+                },
+              } : {
+                color: { value: "#1f77b4" }, // Tableau10 blue - colorblind-safe
+              }),
               tooltip: [
-                { field: xField, type: "quantitative", format: tooltipFormat },
-                { field: yField, type: "quantitative", format: tooltipFormat },
+                { field: xField, type: "quantitative", title: xAxisLabel || xField, format: tooltipFormat },
+                { field: yField, type: "quantitative", title: yAxisLabel || yField, format: tooltipFormat },
+                ...(colorField ? [{ field: colorField, type: "nominal", title: colorField }] : []),
               ],
             }
           } else if (chartType === "area") {
+            // Determine x-axis label angle based on data density
+            const uniqueXCount = new Set(data.map(d => d[xField])).size
+            const xLabelAngle = uniqueXCount > 10 ? -45 : 0
+
             spec.mark = {
               type: "area",
               line: true,
@@ -434,38 +540,126 @@ Format your response with:
               x: {
                 field: xField,
                 type: xType,
-                axis: { title: xAxisLabel || xField, labelAngle: -45 },
+                axis: {
+                  title: xAxisLabel || xField,
+                  labelAngle: xLabelAngle,
+                  labelOverlap: "greedy" as const, // Prevent label overlap
+                  labelPadding: 5,
+                  labelLimit: 100,
+                },
               },
               y: {
                 field: yField,
                 type: "quantitative",
                 axis: { format: yAxisFormat, title: yAxisLabel || yField },
               },
-              color: { value: "#4c78a8" },
+              // Optional color encoding by field
+              ...(colorField ? {
+                color: {
+                  field: colorField,
+                  type: "nominal" as const,
+                  scale: { scheme: "tableau10" }, // Colorblind-safe palette
+                  legend: { title: colorField },
+                },
+              } : {
+                color: { value: "#1f77b4" }, // Tableau10 blue - colorblind-safe
+              }),
               tooltip: [
-                { field: xField, type: xType },
-                { field: yField, type: "quantitative", format: tooltipFormat },
+                { field: xField, type: xType, title: xAxisLabel || xField, ...(isXTemporal && { format: "%B %d, %Y" }) },
+                { field: yField, type: "quantitative", title: yAxisLabel || yField, format: tooltipFormat },
+                ...(colorField ? [{ field: colorField, type: "nominal", title: colorField }] : []),
               ],
             }
           } else if (chartType === "pie") {
+            // Validate category count (pie charts with >10 slices are hard to read)
+            const uniqueCategories = new Set(data.map(d => d[xField])).size
+            if (uniqueCategories > 10) {
+              console.warn(`⚠️  Pie chart has ${uniqueCategories} categories. Consider using a bar chart for better readability.`)
+            }
+
             spec.mark = {
               type: "arc",
               tooltip: true,
               invalid: "filter", // Exclude null/NaN values
+              innerRadius: 0, // Use 50 for donut chart
+              outerRadius: 120,
             }
             spec.encoding = {
-              theta: { field: yField, type: "quantitative" },
+              theta: {
+                field: yField,
+                type: "quantitative",
+                stack: true,
+              },
               color: {
                 field: xField,
                 type: "nominal",
-                legend: { title: xField },
+                scale: { scheme: "tableau10" }, // Colorblind-safe palette
+                legend: {
+                  title: xAxisLabel || xField,
+                  orient: "right",
+                  labelLimit: 150,
+                },
               },
               tooltip: [
-                { field: xField, type: "nominal" },
-                { field: yField, type: "quantitative", format: tooltipFormat },
+                { field: xField, type: "nominal", title: xAxisLabel || xField },
+                { field: yField, type: "quantitative", title: yAxisLabel || yField, format: tooltipFormat },
               ],
             }
             spec.view = { stroke: null }
+          } else if (chartType === "boxplot") {
+            // Validate: box plots need categorical x and quantitative y
+            const sampleXValue = data[0]?.[xField]
+            const isXCategorical = typeof sampleXValue === "string" || (typeof sampleXValue === "number" && Number.isInteger(sampleXValue))
+
+            if (!isXCategorical) {
+              console.warn(`⚠️  Box plot requires categorical x-axis. Consider using scatter plot instead.`)
+            }
+
+            // Determine x-axis label angle based on number of categories
+            const uniqueCategories = new Set(data.map(d => d[xField])).size
+            const xLabelAngle = uniqueCategories > 10 ? -45 : 0
+
+            spec.mark = {
+              type: "boxplot",
+              extent: "min-max", // Show full range including outliers
+              size: uniqueCategories > 20 ? 10 : uniqueCategories > 10 ? 20 : 40, // Adaptive box width
+              tooltip: true,
+              invalid: "filter", // Exclude null/NaN values
+            }
+            spec.encoding = {
+              x: {
+                field: xField,
+                type: "nominal",
+                axis: {
+                  title: xAxisLabel || xField,
+                  labelAngle: xLabelAngle,
+                  labelOverlap: "greedy" as const,
+                  labelPadding: 5,
+                  labelLimit: 100,
+                },
+              },
+              y: {
+                field: yField,
+                type: "quantitative",
+                axis: {
+                  format: yAxisFormat,
+                  title: yAxisLabel || yField,
+                },
+                scale: {
+                  zero: false, // Don't force zero baseline for better distribution visibility
+                },
+              },
+              color: {
+                field: xField,
+                type: "nominal",
+                scale: { scheme: "tableau10" }, // Colorblind-safe palette
+                legend: null, // Hide legend (redundant with x-axis)
+              },
+              tooltip: [
+                { field: xField, type: "nominal", title: xAxisLabel || xField },
+                { field: yField, type: "quantitative", title: `${yAxisLabel || yField} (Range)`, format: tooltipFormat },
+              ],
+            }
           }
 
           // Store in runs table with correct schema
@@ -512,7 +706,16 @@ IMPORTANT: You are starting fresh with this deep-dive analysis. Previous chat hi
 <tools>
 executeSQLQuery: Execute SELECT query. Returns {success, queryId, rowCount, preview, analysis}. Use 'analysis' field for insights from full results.
 
-createChart: Create visualization from queryId. Types: bar (categories), line (time series), scatter (correlations), area (cumulative), pie (3-5 proportions). Create 5-7 high-impact charts for major distributions and key patterns.
+createChart: Create visualization from queryId (auto-fetches 1.5K-10K rows per chart type).
+Chart selection by data types:
+• bar: categorical x + quantitative y (comparisons)
+• line: temporal x + quantitative y (trends)
+• scatter: quantitative x + quantitative y (correlations)
+• boxplot: categorical x + quantitative y (distributions, outliers)
+• area: temporal x + quantitative y (cumulative)
+• pie: categorical (3-7 categories only)
+Decision rule: Categorical+Quant→bar/boxplot, Quant+Quant→scatter, Temporal+Quant→line/area
+Create 5-7 high-impact charts for major distributions and key patterns.
 </tools>
 
 <sql_rules>
@@ -648,14 +851,20 @@ Before sending, verify: no exploration beyond the question, no validation querie
 - Usage: Reference the 'analysis' field for insights from full result set
 
 **createChart**
-- Purpose: Generate visualization from queryId
-- Types:
-  - bar: Categorical comparisons
-  - line: Time series trends
-  - scatter: Correlation analysis
-  - area: Cumulative patterns
-  - pie: Proportional splits (3-5 segments)
-- Usage: Apply when data has visual structure
+- Purpose: Generate visualization from queryId (automatically fetches optimal data amount per chart type)
+- Chart Type Selection Guide (based on data types):
+  - **bar**: categorical x + quantitative y → comparisons, rankings, categorical breakdowns
+  - **line**: temporal/ordered x + quantitative y → trends over time, ordered sequences
+  - **scatter**: quantitative x + quantitative y → correlations between two numeric variables
+  - **boxplot**: categorical x + quantitative y → distribution comparison across categories (quartiles, outliers)
+  - **area**: temporal x + quantitative y → cumulative patterns, stacked trends
+  - **pie**: single categorical field + quantitative → proportional splits (only use for 3-7 categories)
+- Data Type Decision Tree:
+  • Categorical X + Quantitative Y → bar OR boxplot (use boxplot to show distributions)
+  • Quantitative X + Quantitative Y → scatter
+  • Temporal/Ordered X + Quantitative Y → line OR area
+  • Single Categorical Field → pie (only if ≤7 categories)
+- Usage: Apply when data has visual structure. System automatically fetches 1.5K-10K rows based on chart type needs.
 
 # SQL TECHNICAL CONSTRAINTS
 

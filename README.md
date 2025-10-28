@@ -98,13 +98,20 @@ The AI agent uses a minimal 2-tool system with reference-based data flow:
    - Analysis: 2-3 sentence summary from sub-agent covering patterns, outliers, and suggested next dimensions
    - QueryId: Reference for fetching full data later
 
-2. **`createChart`**: Generates Vega-Lite chart specifications
+2. **`createChart`**: Generates Vega-Lite chart specifications with intelligent data fetching
    - Accepts `queryId` parameter from executeSQLQuery
-   - Fetches full data from `runs` table using queryId
-   - Creates professional visualizations with proper styling
-   - Supports: bar, line, scatter, area, pie charts
+   - Automatically re-queries with chart-type-specific limits for optimal visualization:
+     • Box plots: 10,000 rows (needs full distribution for accurate quartiles)
+     • Scatter/line/area: 5,000 rows (better pattern visibility)
+     • Bar/pie: 1,500 rows (aggregated data needs less)
+   - Creates professional visualizations with accessibility features
+   - Supports: bar, line, scatter, boxplot, area, pie charts
+   - Chart selection guidance based on data types:
+     • Categorical X + Quantitative Y → bar or boxplot
+     • Quantitative X + Quantitative Y → scatter
+     • Temporal X + Quantitative Y → line or area
 
-**Reference-Based Pattern**: Instead of passing large datasets through AI context, executeSQLQuery stores data in DB and returns a small preview + queryId. When visualization is needed, createChart fetches the full data using the queryId. This dramatically reduces token usage while maintaining full data access.
+**Reference-Based Pattern**: Instead of passing large datasets through AI context, executeSQLQuery stores data (1,500 rows) in DB and returns a small preview + queryId + original SQL. When visualization is needed, createChart re-executes the SQL with chart-type-specific limits (1.5K-10K rows) to fetch optimal data for each visualization type. This dramatically reduces token usage while maintaining full data access for visualizations.
 
 ## AI Modes
 
@@ -473,8 +480,9 @@ The application uses an optimized batch ingestion system with enterprise-grade r
      - On error: Returns helpful message with fix suggestions (e.g., lists available columns)
    - **createChart**: Generates Vega-Lite chart specifications
      - Receives queryId from executeSQLQuery
-     - Fetches full data from `runs` table using queryId
-     - Generates Vega-Lite spec and stores in `runs.chart_spec`
+     - Re-executes original SQL with chart-type-specific limit (1.5K/5K/10K rows)
+     - Generates optimized Vega-Lite spec with accessibility features
+     - Stores spec + SQL + data in `runs` table for transparency
    - **Chart usage patterns**:
      - Normal mode: Creates charts when data shows clear patterns (judgment-based)
      - Deep dive mode: Creates 5-7 high-impact charts for key distributions and insights
@@ -503,7 +511,7 @@ The AI agent follows these PostgreSQL-specific patterns to avoid common errors:
 
 3. **Postgres Operators**: Use `||` for string concatenation, `COALESCE()`, `DATE_TRUNC()`, `FILTER (WHERE ...)` for conditional aggregates
 
-4. **Always LIMIT, No Semicolons**: Every query ends with `LIMIT ≤1500` with no trailing semicolons
+4. **Always LIMIT, No Semicolons**: Every query ends with `LIMIT ≤1500` for analysis (visualization queries automatically use optimal limits up to 10K based on chart type) with no trailing semicolons
 
 ### Database Schema
 - `datasets`: Metadata about uploaded CSV files
@@ -513,9 +521,11 @@ The AI agent follows these PostgreSQL-specific patterns to avoid common errors:
 - `ds_<datasetId>`: Dynamic tables for each uploaded dataset
 
 ### Security
-- **SQL Safety**: SELECT-only queries with automatic LIMIT (≤1500 rows), no semicolons allowed
+- **SQL Safety**: SELECT-only queries with automatic LIMIT (≤1500 for analysis, up to 10K for visualizations), no semicolons allowed
 - **Error Recovery**: Helpful error messages with fix suggestions (e.g., lists available columns on column-not-found errors)
-- **Timeout Protection**: 5-second query timeout
+- **Timeout Protection**:
+  - Route timeout: 300 seconds (5 minutes, entire analysis session)
+  - Individual query timeouts: 30s (normal mode), 60s (deep dive mode)
 - **Input Validation**: CSV size and column limits enforced
 - **Session-Based**: Datasets deleted on browser close
 
@@ -535,7 +545,6 @@ The AI agent follows these PostgreSQL-specific patterns to avoid common errors:
 │       ├── ingest/route.ts                 # CSV upload and table creation
 │       ├── preview/route.ts                # Data preview endpoint
 │       ├── schema/route.ts                 # Schema metadata endpoint
-│       ├── sql/route.ts                    # SQL execution endpoint
 │       ├── runs/
 │       │   ├── route.ts                    # Artifact management
 │       │   └── [id]/pin/route.ts           # Pin/unpin artifacts

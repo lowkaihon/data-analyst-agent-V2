@@ -33,7 +33,6 @@ This project strictly uses **pnpm**. Do not use npm or yarn.
 │       ├── ingest/route.ts                 # CSV upload and table creation
 │       ├── preview/route.ts                # Data preview endpoint
 │       ├── schema/route.ts                 # Schema metadata endpoint
-│       ├── sql/route.ts                    # SQL execution endpoint
 │       ├── runs/
 │       │   ├── route.ts                    # Artifact management
 │       │   └── [id]/pin/route.ts           # Pin/unpin artifacts
