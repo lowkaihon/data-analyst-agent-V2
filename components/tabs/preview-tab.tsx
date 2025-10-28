@@ -54,7 +54,10 @@ export function PreviewTab({ datasetId }: PreviewTabProps) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-auto p-4">
+      <div className="px-4 pt-4 pb-2">
+        <p className="text-xs text-muted-foreground">Only first 100 rows shown</p>
+      </div>
+      <div className="flex-1 overflow-auto px-4 pb-4">
         <Table className="min-w-max">
           <TableHeader>
             <TableRow>

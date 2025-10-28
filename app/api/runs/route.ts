@@ -13,20 +13,21 @@ export async function GET(req: NextRequest) {
 
     const supabase = await createClient()
 
-    let query = supabase.from("runs").select("*").eq("dataset_id", datasetId).order("time_iso", { ascending: false })
+    // Build query with count
+    let query = supabase.from("runs").select("*", { count: "exact" }).eq("dataset_id", datasetId).order("time_iso", { ascending: false })
 
     if (type) {
       query = query.eq("type", type)
     }
 
-    const { data, error } = await query
+    const { data, error, count } = await query
 
     if (error) {
       console.error("Runs fetch error:", error)
       return NextResponse.json({ error: "Failed to fetch runs" }, { status: 500 })
     }
 
-    return NextResponse.json({ runs: data || [] })
+    return NextResponse.json({ runs: data || [], totalCount: count || 0 })
   } catch (error) {
     console.error("Runs error:", error)
     return NextResponse.json({ error: "Failed to fetch runs" }, { status: 500 })

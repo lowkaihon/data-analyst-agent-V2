@@ -15,6 +15,9 @@ function AnalyzeContent() {
   const [reportContent, setReportContent] = useState<{ title: string; markdown: string } | null>(null)
   const [isGeneratingReport, setIsGeneratingReport] = useState(false)
 
+  // Tab state management
+  const [activeTab, setActiveTab] = useState("preview")
+
   // Artifact refresh trigger - increments when AI streaming ends (refreshes Charts and SQL tabs)
   const [artifactRefreshTrigger, setArtifactRefreshTrigger] = useState(0)
 
@@ -45,6 +48,7 @@ function AnalyzeContent() {
 
       console.log("Report generated successfully")
       setReportContent(result) // { title, markdown }
+      setActiveTab("report") // Auto-switch to report tab
     } catch (err) {
       console.error("Failed to generate report:", err)
       // Error will be shown in UI via report tab
@@ -86,6 +90,8 @@ function AnalyzeContent() {
             onGenerateReport={handleGenerateReport}
             isGeneratingReport={isGeneratingReport}
             artifactRefreshTrigger={artifactRefreshTrigger}
+            activeTab={activeTab}
+            onActiveTabChange={setActiveTab}
           />
         </ResizablePanel>
       </ResizablePanelGroup>

@@ -1,6 +1,5 @@
 "use client"
 
-import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Database, BarChart3, FileText } from "lucide-react"
 import { PreviewTab } from "@/components/tabs/preview-tab"
@@ -16,10 +15,19 @@ interface DatasetTabsProps {
   onGenerateReport?: () => void
   isGeneratingReport?: boolean
   artifactRefreshTrigger?: number
+  activeTab?: string
+  onActiveTabChange?: (tab: string) => void
 }
 
-export function DatasetTabs({ datasetId, reportContent, onGenerateReport, isGeneratingReport, artifactRefreshTrigger }: DatasetTabsProps) {
-  const [activeTab, setActiveTab] = useState("preview")
+export function DatasetTabs({
+  datasetId,
+  reportContent,
+  onGenerateReport,
+  isGeneratingReport,
+  artifactRefreshTrigger,
+  activeTab = "preview",
+  onActiveTabChange
+}: DatasetTabsProps) {
 
   return (
     <div className="flex h-full flex-col">
@@ -31,7 +39,7 @@ export function DatasetTabs({ datasetId, reportContent, onGenerateReport, isGene
       </div>
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
+      <Tabs value={activeTab} onValueChange={onActiveTabChange} className="h-full flex flex-col">
         <TabsList className="w-full justify-start rounded-none border-b bg-background px-4">
           <TabsTrigger value="preview" className="gap-2">
             <Database className="h-4 w-4" />

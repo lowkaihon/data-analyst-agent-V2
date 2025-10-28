@@ -16,6 +16,7 @@ interface SQLTabProps {
 
 export function SQLTab({ datasetId, refreshTrigger }: SQLTabProps) {
   const [runs, setRuns] = useState<Run[]>([])
+  const [totalCount, setTotalCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expandedResults, setExpandedResults] = useState<Set<string>>(new Set())
@@ -31,6 +32,7 @@ export function SQLTab({ datasetId, refreshTrigger }: SQLTabProps) {
         }
 
         setRuns(result.runs)
+        setTotalCount(result.totalCount || 0)
       } catch (err) {
         setError(err instanceof Error ? err.message : "An error occurred")
       } finally {
@@ -101,13 +103,17 @@ export function SQLTab({ datasetId, refreshTrigger }: SQLTabProps) {
           </div>
         ) : (
           <div className="flex flex-col gap-3 pb-4">
-            {runs.map((run) => (
-              <Card key={run.id} className="gap-0">
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-2">
-                      <Badge variant={run.status === "success" ? "default" : "destructive"}>{run.status}</Badge>
-                    </div>
+            {runs.map((run, index) => {
+              // Calculate query number: oldest = 1, newest = totalCount
+              const queryNumber = totalCount - index
+              return (
+                <Card key={run.id} className="gap-0">
+                  <CardHeader>
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-muted-foreground">Query #{queryNumber}</span>
+                        <Badge variant={run.status === "success" ? "default" : "destructive"}>{run.status}</Badge>
+                      </div>
                     <div className="flex items-center gap-1">
                       <Button variant="ghost" size="icon" onClick={() => handleCopy(run.sql || "")}>
                         <Copy className="h-4 w-4" />
@@ -199,7 +205,8 @@ export function SQLTab({ datasetId, refreshTrigger }: SQLTabProps) {
                   )}
                 </CardContent>
               </Card>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>

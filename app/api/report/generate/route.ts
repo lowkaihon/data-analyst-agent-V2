@@ -30,40 +30,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Dataset not found" }, { status: 404 })
     }
 
-    // Fetch pinned runs (guaranteed to be included in report)
-    const { data: pinnedRuns, error: pinnedError } = await supabase
-      .from("runs")
-      .select("*")
-      .eq("dataset_id", datasetId)
-      .eq("pinned", true)
-      .order("time_iso", { ascending: true })
-
-    if (pinnedError) {
-      console.error("Pinned runs fetch error:", pinnedError)
-      return NextResponse.json({ error: "Failed to fetch analysis data" }, { status: 500 })
-    }
-
-    // Calculate remaining slots to reach 50 total items
-    const pinnedCount = pinnedRuns?.length || 0
-    const remainingSlots = Math.max(0, 50 - pinnedCount)
-
-    // Fetch recent unpinned runs to fill remaining slots (up to 50 total)
-    const { data: recentRuns, error: recentError } = await supabase
+    // Fetch all successful runs ordered by timestamp (oldest first)
+    // This ensures numbering is consistent: oldest = 1, newest = highest number
+    const { data: runs, error: runsError } = await supabase
       .from("runs")
       .select("*")
       .eq("dataset_id", datasetId)
       .eq("status", "success")
-      .eq("pinned", false)
-      .order("time_iso", { ascending: false })
-      .limit(remainingSlots)
+      .order("time_iso", { ascending: true })
+      .limit(100)
 
-    if (recentError) {
-      console.error("Recent runs fetch error:", recentError)
+    if (runsError) {
+      console.error("Runs fetch error:", runsError)
       return NextResponse.json({ error: "Failed to fetch analysis data" }, { status: 500 })
     }
-
-    // Combine pinned and recent runs (pinned items always included first)
-    const runs = [...(pinnedRuns || []), ...(recentRuns || [])]
 
     if (!runs || runs.length === 0) {
       return NextResponse.json({

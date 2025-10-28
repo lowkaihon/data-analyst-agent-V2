@@ -287,7 +287,7 @@ Format your response with:
           const supabaseClient = await createServerClient()
           const { data: runData, error: fetchError } = await supabaseClient
             .from("runs")
-            .select("sample")
+            .select("sample, sql, columns")
             .eq("id", queryId)
             .single()
 
@@ -300,6 +300,8 @@ Format your response with:
           }
 
           const data = runData.sample as any[]
+          const sqlQuery = runData.sql as string
+          const columns = runData.columns as string[]
 
           if (!data || data.length === 0) {
             return {
@@ -325,6 +327,14 @@ Format your response with:
           const sampleValue = data[0]?.[xField]
           const isXTemporal = !isNaN(Date.parse(sampleValue))
           const xType = isXTemporal ? "temporal" : typeof sampleValue === "number" ? "quantitative" : "nominal"
+
+          // Analyze y-values to determine optimal format (for rates vs counts)
+          const yValues = data.map(d => d[yField]).filter(v => typeof v === 'number' && !isNaN(v))
+          const maxYValue = yValues.length > 0 ? Math.max(...yValues) : 1
+
+          // Use 2 decimal places for rates/percentages (0-2 range), integers for larger values
+          const yAxisFormat = (maxYValue < 2 && maxYValue > 0) ? ",.2f" : ",.0f"
+          const tooltipFormat = yAxisFormat
 
           // Base spec with accessibility and data handling best practices
           let spec: any = {
@@ -354,12 +364,12 @@ Format your response with:
               y: {
                 field: yField,
                 type: "quantitative",
-                axis: { format: ",.0f", title: yAxisLabel || yField },
+                axis: { format: yAxisFormat, title: yAxisLabel || yField },
               },
               color: { value: "#4c78a8" },
               tooltip: [
                 { field: xField, type: xType },
-                { field: yField, type: "quantitative", format: ",.0f" },
+                { field: yField, type: "quantitative", format: tooltipFormat },
               ],
             }
           } else if (chartType === "line") {
@@ -379,12 +389,12 @@ Format your response with:
               y: {
                 field: yField,
                 type: "quantitative",
-                axis: { format: ",.0f", title: yAxisLabel || yField },
+                axis: { format: yAxisFormat, title: yAxisLabel || yField },
               },
               color: { value: "#4c78a8" },
               tooltip: [
                 { field: xField, type: xType },
-                { field: yField, type: "quantitative", format: ",.2f" },
+                { field: yField, type: "quantitative", format: tooltipFormat },
               ],
             }
           } else if (chartType === "scatter") {
@@ -399,17 +409,17 @@ Format your response with:
               x: {
                 field: xField,
                 type: "quantitative",
-                axis: { format: ",.0f", title: xAxisLabel || xField },
+                axis: { format: yAxisFormat, title: xAxisLabel || xField },
               },
               y: {
                 field: yField,
                 type: "quantitative",
-                axis: { format: ",.0f", title: yAxisLabel || yField },
+                axis: { format: yAxisFormat, title: yAxisLabel || yField },
               },
               color: { value: "#4c78a8" },
               tooltip: [
-                { field: xField, type: "quantitative", format: ",.2f" },
-                { field: yField, type: "quantitative", format: ",.2f" },
+                { field: xField, type: "quantitative", format: tooltipFormat },
+                { field: yField, type: "quantitative", format: tooltipFormat },
               ],
             }
           } else if (chartType === "area") {
@@ -429,12 +439,12 @@ Format your response with:
               y: {
                 field: yField,
                 type: "quantitative",
-                axis: { format: ",.0f", title: yAxisLabel || yField },
+                axis: { format: yAxisFormat, title: yAxisLabel || yField },
               },
               color: { value: "#4c78a8" },
               tooltip: [
                 { field: xField, type: xType },
-                { field: yField, type: "quantitative", format: ",.0f" },
+                { field: yField, type: "quantitative", format: tooltipFormat },
               ],
             }
           } else if (chartType === "pie") {
@@ -452,7 +462,7 @@ Format your response with:
               },
               tooltip: [
                 { field: xField, type: "nominal" },
-                { field: yField, type: "quantitative", format: ",.0f" },
+                { field: yField, type: "quantitative", format: tooltipFormat },
               ],
             }
             spec.view = { stroke: null }
@@ -466,6 +476,9 @@ Format your response with:
             status: "success",
             chart_spec: spec,
             insight: title, // Use chart title as the insight
+            sql: sqlQuery, // Store source SQL query
+            sample: data, // Store the data results
+            columns: columns, // Store column names
           })
 
           return {
