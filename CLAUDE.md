@@ -29,7 +29,7 @@ This project strictly uses **pnpm**. Do not use npm or yarn.
 │   │   └── loading.tsx             # Suspense boundary
 │   └── api/
 │       ├── chat/[datasetId]/route.ts       # AI chat with tools
-│       ├── datasets/cleanup/route.ts       # Dataset deletion
+│       ├── datasets/cleanup/route.ts       # Dataset deletion (in development)
 │       ├── ingest/route.ts                 # CSV upload and table creation
 │       ├── preview/route.ts                # Data preview endpoint
 │       ├── schema/route.ts                 # Schema metadata endpoint
@@ -39,7 +39,7 @@ This project strictly uses **pnpm**. Do not use npm or yarn.
 │       └── report/generate/route.ts        # Report generation
 ├── components/
 │   ├── chat-panel.tsx              # Chat interface with AI SDK
-│   ├── dataset-tabs.tsx            # Tabbed dataset viewer
+│   ├── data-explorer.tsx           # Data explorer with tabbed views
 │   ├── history-drawer.tsx          # Artifact search and filter (in development)
 │   ├── theme-provider.tsx          # Theme context provider
 │   ├── vega-lite-chart.tsx         # Vega-Lite visualization wrapper

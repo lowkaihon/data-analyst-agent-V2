@@ -21,7 +21,7 @@ Scaffolded with Vercel v0; productionized with Next.js 15 + Supabase/Postgres. U
 
 ### 📊 Interactive Split-View Interface
 - **Chat Panel (Left)**: Streaming conversation with the AI agent
-- **Dataset Tabs (Right)**:
+- **Data Explorer Tabs (Right)**:
   - **Preview**: Scrollable data table with first 100 rows
   - **Schema**: Column metadata, types, and statistics
   - **SQL**: Query history with copy, re-run, and pin actions
@@ -101,18 +101,28 @@ The AI agent uses a minimal 2-tool system with reference-based data flow:
 
 2. **`createChart`**: Generates Vega-Lite chart specifications with intelligent data fetching
    - Accepts `queryId` parameter from executeSQLQuery
-   - Automatically re-queries with chart-type-specific limits for optimal visualization:
-     • Box plots: 10,000 rows (needs full distribution for accurate quartiles)
-     • Scatter/line/area: 5,000 rows (better pattern visibility)
-     • Bar/pie: 1,500 rows (aggregated data needs less)
+   - Smart data handling based on dataset size and chart type:
+     • **Boxplots**: Auto-aggregates for datasets >10K rows using SQL PERCENTILE_CONT() for accurate quartiles/outliers
+     • **Scatter/line/area**: Limited to 5K rows - returns error with aggregation guidance if exceeded
+     • **Bar/pie/heatmap**: Limited to 1.5K rows - typically used with pre-aggregated data
    - Creates professional visualizations with accessibility features
-   - Supports: bar, line, scatter, boxplot, area, pie charts
+   - Supports: bar, line, scatter, boxplot, area, pie, heatmap charts
    - Chart selection guidance based on data types:
-     • Categorical X + Quantitative Y → bar or boxplot
+     • Categorical X + Quantitative Y → bar (aggregated) or boxplot (raw distribution)
      • Quantitative X + Quantitative Y → scatter
      • Temporal X + Quantitative Y → line or area
+     • Categorical X + Categorical Y + Quantitative Z → heatmap (2D patterns, bivariate analysis)
+   - Data volume best practices:
+     • Large scatter/line datasets: Aggregate via SQL (binning, downsampling, coarser time granularity)
+     • Boxplots: Automatically handled via server-side statistical aggregation
+     • Heatmaps: Use aggregated data (GROUP BY x, y). Limit to ≤30 categories per dimension for readability
 
-**Reference-Based Pattern**: Instead of passing large datasets through AI context, executeSQLQuery stores data (1,500 rows) in DB and returns a small preview + queryId + original SQL. When visualization is needed, createChart re-executes the SQL with chart-type-specific limits (1.5K-10K rows) to fetch optimal data for each visualization type. This dramatically reduces token usage while maintaining full data access for visualizations.
+**Reference-Based Pattern**: Instead of passing large datasets through AI context, executeSQLQuery stores data (1,500 rows) in DB and returns a small preview + queryId + original SQL. When visualization is needed, createChart re-executes the SQL intelligently:
+- For datasets ≤chart limit: Fetches full data (1.5K-10K rows depending on chart type)
+- For boxplots >10K rows: Automatically uses SQL aggregates (PERCENTILE_CONT) for accurate distribution statistics
+- For other charts exceeding limits: Returns error with guidance to aggregate data in SQL
+
+This dramatically reduces token usage while maintaining accurate visualizations for any dataset size.
 
 ## Performance Optimizations
 
@@ -499,7 +509,10 @@ The application uses an optimized batch ingestion system with enterprise-grade r
      - On error: Returns helpful message with fix suggestions (e.g., lists available columns)
    - **createChart**: Generates Vega-Lite chart specifications
      - Receives queryId from executeSQLQuery
-     - Re-executes original SQL with chart-type-specific limit (1.5K/5K/10K rows)
+     - Re-executes original SQL intelligently based on dataset size:
+       • ≤limit: Fetches data with chart-specific limit (1.5K/5K/10K rows)
+       • Boxplots >10K: Automatically converts to SQL aggregates (PERCENTILE_CONT)
+       • Other charts >limit: Returns error with aggregation guidance
      - Generates optimized Vega-Lite spec with accessibility features
      - Stores spec + SQL + data in `runs` table for transparency
    - **Chart usage patterns**:
@@ -530,7 +543,7 @@ The AI agent follows these PostgreSQL-specific patterns to avoid common errors:
 
 3. **Postgres Operators**: Use `||` for string concatenation, `COALESCE()`, `DATE_TRUNC()`, `FILTER (WHERE ...)` for conditional aggregates
 
-4. **Always LIMIT, No Semicolons**: Every query ends with `LIMIT ≤1500` for analysis (visualization queries automatically use optimal limits up to 10K based on chart type) with no trailing semicolons
+4. **Always LIMIT, No Semicolons**: Every query ends with `LIMIT ≤1500` for analysis (visualization queries use smart data handling: fetch up to 10K rows for small datasets, auto-aggregate for large boxplots, or reject with guidance for other large charts) with no trailing semicolons
 
 ### Database Schema
 - `datasets`: Metadata about uploaded CSV files
@@ -540,13 +553,13 @@ The AI agent follows these PostgreSQL-specific patterns to avoid common errors:
 - `ds_<datasetId>`: Dynamic tables for each uploaded dataset
 
 ### Security
-- **SQL Safety**: SELECT-only queries with automatic LIMIT (≤1500 for analysis, up to 10K for visualizations), no semicolons allowed
+- **SQL Safety**: SELECT-only queries with automatic LIMIT (≤1500 for analysis, up to 10K for visualizations with automatic aggregation for boxplots on larger datasets), no semicolons allowed
 - **Error Recovery**: Helpful error messages with fix suggestions (e.g., lists available columns on column-not-found errors)
 - **Timeout Protection**:
   - Route timeout: 300 seconds (5 minutes, entire analysis session)
   - Individual query timeouts: 30s (normal mode), 60s (deep dive mode)
 - **Input Validation**: CSV size and column limits enforced
-- **Session-Based**: Datasets deleted on browser close
+- **Session-Based**: Datasets deleted on browser close (in development)
 
 ## Project Structure
 
@@ -560,7 +573,7 @@ The AI agent follows these PostgreSQL-specific patterns to avoid common errors:
 │   │   └── loading.tsx             # Suspense boundary
 │   └── api/
 │       ├── chat/[datasetId]/route.ts       # AI chat with tools
-│       ├── datasets/cleanup/route.ts       # Dataset deletion
+│       ├── datasets/cleanup/route.ts       # Dataset deletion (in development)
 │       ├── ingest/route.ts                 # CSV upload and table creation
 │       ├── preview/route.ts                # Data preview endpoint
 │       ├── schema/route.ts                 # Schema metadata endpoint
@@ -570,7 +583,7 @@ The AI agent follows these PostgreSQL-specific patterns to avoid common errors:
 │       └── report/generate/route.ts        # Report generation
 ├── components/
 │   ├── chat-panel.tsx              # Chat interface with AI SDK
-│   ├── dataset-tabs.tsx            # Tabbed dataset viewer
+│   ├── data-explorer.tsx           # Data explorer with tabbed views
 │   ├── history-drawer.tsx          # Artifact search and filter (in development)
 │   ├── theme-provider.tsx          # Theme context provider
 │   ├── vega-lite-chart.tsx         # Vega-Lite visualization wrapper

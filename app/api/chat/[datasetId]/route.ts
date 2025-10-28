@@ -285,14 +285,14 @@ Format your response with:
         description: `Create Vega-Lite chart from query results. Automatically fetches optimal data amount based on chart type. Use queryId from executeSQLQuery.`,
         inputSchema: z.object({
           queryId: z.string().describe("QueryId from executeSQLQuery"),
-          chartType: z.enum(["bar", "line", "scatter", "area", "pie", "boxplot"]).describe("bar: categorical x + quantitative y (comparisons), line: temporal/ordered x + quantitative y (trends), scatter: quantitative x + quantitative y (correlations), area: temporal x + quantitative y (cumulative), pie: categorical (3-7 categories), boxplot: categorical x + quantitative y (distributions)"),
+          chartType: z.enum(["bar", "line", "scatter", "area", "pie", "boxplot", "heatmap"]).describe("bar: categorical x + quantitative y (comparisons), line: temporal/ordered x + quantitative y (trends), scatter: quantitative x + quantitative y (correlations), area: temporal x + quantitative y (cumulative), pie: categorical (3-7 categories), boxplot: categorical x + quantitative y (distributions) - REQUIRES raw unaggregated data with 3+ points per category; for pre-aggregated data (AVG/SUM/COUNT) use bar chart, heatmap: categorical x + categorical y + quantitative z (2D patterns) - REQUIRES aggregated data (one row per x,y combination via GROUP BY x, y)"),
           xField: z.string().describe("Column for x-axis (must exist in query results)"),
           yField: z.string().describe("Column for y-axis (must exist in query results)"),
           title: z.string().describe("Descriptive title explaining the insight"),
           subtitle: z.string().optional().describe("Optional subtitle for additional context"),
           xAxisLabel: z.string().optional().describe("Custom x-axis label (default: xField name)"),
           yAxisLabel: z.string().optional().describe("Custom y-axis label (default: yField name)"),
-          colorField: z.string().optional().describe("Optional field to color by (categorical, not for pie/boxplot charts)"),
+          colorField: z.string().optional().describe("Optional field to color by (categorical for bar/line/scatter/area; quantitative value field for heatmap; not used for pie/boxplot)"),
         }),
         execute: async ({ queryId, chartType, xField, yField, title, subtitle, xAxisLabel, yAxisLabel, colorField }) => {
           console.log("Generating chart:", chartType, "for queryId:", queryId)
@@ -319,27 +319,81 @@ Format your response with:
           // Determine chart-type-specific limit for optimal visualization
           const chartLimit = chartType === "boxplot" ? 10000
                            : ["scatter", "line", "area"].includes(chartType) ? 5000
-                           : 1500
+                           : 1500 // bar, pie, heatmap (aggregated data)
 
           console.log(`Re-querying with ${chartLimit} row limit for ${chartType} chart`)
 
-          // Re-execute query with optimal limit
-          const guardedSQL = guardSQL(sqlQuery, dataset.table_name, chartLimit)
+          // Check actual row count to determine if we need special handling
+          // Build a COUNT query by wrapping the original SQL
+          const countSQL = `SELECT COUNT(*) FROM (${sqlQuery.replace(/;?\s*$/, '')}) as subquery`
+          const countResult = await pool.query(countSQL)
+          const totalRows = Number.parseInt(countResult.rows[0].count, 10)
 
-          const startTime = Date.now()
-          const queryResult = await pool.query(guardedSQL)
-          const durationMs = Date.now() - startTime
+          console.log(`Query would return ${totalRows} rows (chart limit: ${chartLimit})`)
 
-          const data = queryResult.rows
+          // Track whether we're using aggregate data (for boxplot spec building)
+          let useAggregates = false
+          let data: any[]
 
-          if (!data || data.length === 0) {
-            return {
-              success: false,
-              error: "No data available to visualize",
+          // Handle large datasets based on chart type
+          if (totalRows > chartLimit) {
+            if (chartType === "boxplot") {
+              // ✅ Auto-fix: Use SQL statistical aggregates for accurate distribution
+              console.log(`Using SQL aggregates for boxplot (${totalRows} rows exceeds ${chartLimit} limit)`)
+
+              const { convertToStatsQuery, canConvertToStats } = await import("@/lib/sql-stats")
+
+              if (!canConvertToStats(sqlQuery)) {
+                return {
+                  success: false,
+                  error: "Cannot create boxplot: query contains aggregation or complex features. Please use a simple SELECT query with raw data.",
+                }
+              }
+
+              const statsSQL = convertToStatsQuery(sqlQuery, xField, yField)
+              console.log("Generated stats query:", statsSQL)
+
+              const startTime = Date.now()
+              const statsResult = await pool.query(statsSQL)
+              const durationMs = Date.now() - startTime
+
+              data = statsResult.rows
+              useAggregates = true
+
+              if (!data || data.length === 0) {
+                return {
+                  success: false,
+                  error: "No data available to visualize",
+                }
+              }
+
+              console.log(`Fetched ${data.length} category statistics for boxplot (from ${totalRows} original rows)`)
+            } else {
+              // ❌ Reject: Force LLM to aggregate for other chart types
+              return {
+                success: false,
+                error: `Query would return ${totalRows} rows but ${chartType} charts are limited to ${chartLimit} points for readability. Please aggregate the data using SQL (e.g., GROUP BY with AVG/SUM/COUNT, bin temporal data into larger intervals, or use a different chart type like boxplot for distributions).`,
+              }
             }
-          }
+          } else {
+            // Dataset is small enough, use standard approach
+            const guardedSQL = guardSQL(sqlQuery, dataset.table_name, chartLimit)
 
-          console.log("Fetched", data.length, "rows for visualization (limit:", chartLimit, ")")
+            const startTime = Date.now()
+            const queryResult = await pool.query(guardedSQL)
+            const durationMs = Date.now() - startTime
+
+            data = queryResult.rows
+
+            if (!data || data.length === 0) {
+              return {
+                success: false,
+                error: "No data available to visualize",
+              }
+            }
+
+            console.log("Fetched", data.length, "rows for visualization (limit:", chartLimit, ")")
+          }
 
           // Use shared configuration for consistency
           const { VEGA_BASE_CONFIG, CHART_CONSTRAINTS } = await import("@/lib/vega-config")
@@ -352,10 +406,29 @@ Format your response with:
             }
           }
 
-          // Determine field types (simple heuristic)
+          // Determine field types with enhanced discrete integer detection
           const sampleValue = data[0]?.[xField]
-          const isXTemporal = !isNaN(Date.parse(sampleValue))
-          const xType = isXTemporal ? "temporal" : typeof sampleValue === "number" ? "quantitative" : "nominal"
+          // Stricter temporal detection: must be string-like date format, not bare integers
+          // Prevents integers (1, 2, 3...) from being treated as timestamps
+          const isXTemporal = typeof sampleValue === "string"
+                             && !isNaN(Date.parse(sampleValue))
+                             && isNaN(Number(sampleValue))
+
+          // Enhanced type detection for x-axis: distinguish discrete integer sequences from continuous numeric data
+          let xType: string
+          if (isXTemporal) {
+            xType = "temporal"
+          } else if (typeof sampleValue === "number") {
+            // Check if this is a discrete integer sequence (like buckets 1-10, ratings 1-5, etc.)
+            const uniqueXValues = new Set(data.map(d => d[xField]))
+            const isAllIntegers = Array.from(uniqueXValues).every(v => typeof v === 'number' && Number.isInteger(v))
+            const isDiscrete = uniqueXValues.size <= 20 && isAllIntegers
+
+            // Use ordinal for discrete integer sequences (ensures all labels show), quantitative for continuous
+            xType = isDiscrete ? "ordinal" : "quantitative"
+          } else {
+            xType = "nominal"
+          }
 
           // Analyze y-values to determine optimal format (for rates vs counts)
           const yValues = data.map(d => d[yField]).filter(v => typeof v === 'number' && !isNaN(v))
@@ -615,14 +688,209 @@ Format your response with:
               console.warn(`⚠️  Box plot requires categorical x-axis. Consider using scatter plot instead.`)
             }
 
-            // Determine x-axis label angle based on number of categories
-            const uniqueCategories = new Set(data.map(d => d[xField])).size
-            const xLabelAngle = uniqueCategories > 10 ? -45 : 0
+            if (useAggregates) {
+              // Aggregate mode: Build boxplot from pre-computed statistics
+              // Data format: {xField, min, q1, median, q3, max, count}
+              console.log("Building boxplot from aggregate statistics")
+
+              const uniqueCategories = data.length
+              const xLabelAngle = uniqueCategories > 10 ? -45 : 0
+
+              // Use layer composition to build boxplot from aggregated data
+              spec.layer = [
+                // Whiskers (min to max range)
+                {
+                  mark: { type: "rule", size: 1 },
+                  encoding: {
+                    x: {
+                      field: xField,
+                      type: "nominal",
+                      axis: {
+                        title: xAxisLabel || xField,
+                        labelAngle: xLabelAngle,
+                        labelOverlap: "greedy" as const,
+                        labelPadding: 5,
+                        labelLimit: 100,
+                      },
+                    },
+                    y: {
+                      field: "min",
+                      type: "quantitative",
+                      scale: { zero: false },
+                      axis: {
+                        format: yAxisFormat,
+                        title: yAxisLabel || yField,
+                      },
+                    },
+                    y2: { field: "max" },
+                  },
+                },
+                // Box (q1 to q3 IQR)
+                {
+                  mark: {
+                    type: "bar",
+                    size: uniqueCategories > 20 ? 10 : uniqueCategories > 10 ? 20 : 40,
+                  },
+                  encoding: {
+                    x: {
+                      field: xField,
+                      type: "nominal",
+                    },
+                    y: { field: "q1", type: "quantitative" },
+                    y2: { field: "q3" },
+                    color: {
+                      field: xField,
+                      type: "nominal",
+                      scale: { scheme: "tableau10" },
+                      legend: null,
+                    },
+                  },
+                },
+                // Median line
+                {
+                  mark: { type: "tick", color: "white", size: uniqueCategories > 20 ? 10 : uniqueCategories > 10 ? 20 : 40 },
+                  encoding: {
+                    x: {
+                      field: xField,
+                      type: "nominal",
+                    },
+                    y: { field: "median", type: "quantitative" },
+                  },
+                },
+              ]
+
+              // Add tooltip layer for interactivity
+              spec.layer.push({
+                mark: { type: "bar", size: uniqueCategories > 20 ? 10 : uniqueCategories > 10 ? 20 : 40, opacity: 0 },
+                encoding: {
+                  x: { field: xField, type: "nominal" },
+                  y: { field: "q1", type: "quantitative" },
+                  y2: { field: "q3" },
+                  tooltip: [
+                    { field: xField, type: "nominal", title: xAxisLabel || xField },
+                    { field: "min", type: "quantitative", title: `Min ${yAxisLabel || yField}`, format: tooltipFormat },
+                    { field: "q1", type: "quantitative", title: `Q1 ${yAxisLabel || yField}`, format: tooltipFormat },
+                    { field: "median", type: "quantitative", title: `Median ${yAxisLabel || yField}`, format: tooltipFormat },
+                    { field: "q3", type: "quantitative", title: `Q3 ${yAxisLabel || yField}`, format: tooltipFormat },
+                    { field: "max", type: "quantitative", title: `Max ${yAxisLabel || yField}`, format: tooltipFormat },
+                    { field: "count", type: "quantitative", title: "Count", format: ",.0f" },
+                  ],
+                },
+              })
+            } else {
+              // Raw data mode: Let Vega-Lite compute statistics
+              // Validate: box plots need multiple raw data points per category (not aggregated data)
+              const pointsPerCategory = new Map<any, number>()
+              data.forEach(d => {
+                const cat = d[xField]
+                pointsPerCategory.set(cat, (pointsPerCategory.get(cat) || 0) + 1)
+              })
+
+              const minPointsPerCategory = Math.min(...Array.from(pointsPerCategory.values()))
+
+              if (minPointsPerCategory < 3) {
+                return {
+                  success: false,
+                  error: `Boxplot requires multiple raw data points per category (found ${minPointsPerCategory} point${minPointsPerCategory === 1 ? '' : 's'} per category). Your data appears to be pre-aggregated (e.g., using AVG, COUNT, SUM). Use a bar chart to compare aggregated values across categories instead.`
+                }
+              }
+
+              // Determine x-axis label angle based on number of categories
+              const uniqueCategories = new Set(data.map(d => d[xField])).size
+              const xLabelAngle = uniqueCategories > 10 ? -45 : 0
+
+              spec.mark = {
+                type: "boxplot",
+                extent: "min-max", // Show full range including outliers
+                size: uniqueCategories > 20 ? 10 : uniqueCategories > 10 ? 20 : 40, // Adaptive box width
+                tooltip: true,
+                invalid: "filter", // Exclude null/NaN values
+              }
+              spec.encoding = {
+                x: {
+                  field: xField,
+                  type: "nominal",
+                  axis: {
+                    title: xAxisLabel || xField,
+                    labelAngle: xLabelAngle,
+                    labelOverlap: "greedy" as const,
+                    labelPadding: 5,
+                    labelLimit: 100,
+                  },
+                },
+                y: {
+                  field: yField,
+                  type: "quantitative",
+                  axis: {
+                    format: yAxisFormat,
+                    title: yAxisLabel || yField,
+                  },
+                  scale: {
+                    zero: false, // Don't force zero baseline for better distribution visibility
+                  },
+                },
+                color: {
+                  field: xField,
+                  type: "nominal",
+                  scale: { scheme: "tableau10" }, // Colorblind-safe palette
+                  legend: null, // Hide legend (redundant with x-axis)
+                },
+                tooltip: [
+                  { field: xField, type: "nominal", title: xAxisLabel || xField },
+                  { field: yField, type: "quantitative", title: `${yAxisLabel || yField} (Range)`, format: tooltipFormat },
+                ],
+              }
+            }
+          } else if (chartType === "heatmap") {
+            // Validate: heatmap needs categorical x, categorical y, and a quantitative value field
+            // Requires aggregated data (one row per x,y combination)
+            const sampleXValue = data[0]?.[xField]
+            const sampleYValue = data[0]?.[yField]
+
+            const isXCategorical = typeof sampleXValue === "string" || typeof sampleXValue === "number"
+            const isYCategorical = typeof sampleYValue === "string" || typeof sampleYValue === "number"
+
+            if (!isXCategorical || !isYCategorical) {
+              console.warn(`⚠️  Heatmap requires categorical x and y axes.`)
+            }
+
+            // Determine the value field for color encoding
+            // If colorField is specified, use it; otherwise use yField as the value
+            const valueField = colorField || yField
+
+            // Check if we have numeric values for the heatmap cells
+            const sampleValue = data[0]?.[valueField]
+            if (typeof sampleValue !== "number") {
+              return {
+                success: false,
+                error: `Heatmap requires a quantitative value field for color encoding. The field '${valueField}' does not contain numeric values. Please ensure your query includes a numeric aggregation (e.g., COUNT(*), AVG(...), SUM(...)) and specify it via colorField parameter.`
+              }
+            }
+
+            // Validate: heatmap should have aggregated data (ideally one value per x,y combo)
+            const xyPairs = new Map<string, number>()
+            data.forEach(d => {
+              const key = `${d[xField]}|${d[yField]}`
+              xyPairs.set(key, (xyPairs.get(key) || 0) + 1)
+            })
+
+            const duplicates = Array.from(xyPairs.values()).filter(count => count > 1).length
+            if (duplicates > 0) {
+              console.warn(`⚠️  Heatmap has ${duplicates} duplicate x,y combinations. Data should be aggregated with GROUP BY ${xField}, ${yField}.`)
+            }
+
+            // Determine axis label angles based on category counts
+            const uniqueXCategories = new Set(data.map(d => d[xField])).size
+            const uniqueYCategories = new Set(data.map(d => d[yField])).size
+            const xLabelAngle = uniqueXCategories > 10 ? -45 : 0
+
+            // Warn if too many categories (readability issue)
+            if (uniqueXCategories > 30 || uniqueYCategories > 30) {
+              console.warn(`⚠️  Heatmap has ${uniqueXCategories}×${uniqueYCategories} cells. Consider filtering or binning for better readability (recommend ≤30 categories per dimension).`)
+            }
 
             spec.mark = {
-              type: "boxplot",
-              extent: "min-max", // Show full range including outliers
-              size: uniqueCategories > 20 ? 10 : uniqueCategories > 10 ? 20 : 40, // Adaptive box width
+              type: "rect",
               tooltip: true,
               invalid: "filter", // Exclude null/NaN values
             }
@@ -640,24 +908,28 @@ Format your response with:
               },
               y: {
                 field: yField,
-                type: "quantitative",
+                type: "nominal",
                 axis: {
-                  format: yAxisFormat,
                   title: yAxisLabel || yField,
-                },
-                scale: {
-                  zero: false, // Don't force zero baseline for better distribution visibility
+                  labelOverlap: "greedy" as const,
                 },
               },
               color: {
-                field: xField,
-                type: "nominal",
-                scale: { scheme: "tableau10" }, // Colorblind-safe palette
-                legend: null, // Hide legend (redundant with x-axis)
+                field: valueField,
+                type: "quantitative",
+                scale: {
+                  scheme: "blues", // Sequential color scheme for quantitative values
+                  // Can also use "viridis", "magma", "inferno" for better perceptual uniformity
+                },
+                legend: {
+                  title: colorField ? (yAxisLabel || valueField) : (yAxisLabel || yField),
+                  orient: "right",
+                },
               },
               tooltip: [
                 { field: xField, type: "nominal", title: xAxisLabel || xField },
-                { field: yField, type: "quantitative", title: `${yAxisLabel || yField} (Range)`, format: tooltipFormat },
+                { field: yField, type: "nominal", title: yAxisLabel || yField },
+                { field: valueField, type: "quantitative", title: colorField ? valueField : (yAxisLabel || yField), format: tooltipFormat },
               ],
             }
           }
@@ -704,39 +976,26 @@ IMPORTANT: You are starting fresh with this deep-dive analysis. Previous chat hi
 </task>
 
 <tools>
-executeSQLQuery: Execute SELECT query. Returns {success, queryId, rowCount, preview, analysis}. Use 'analysis' field for insights from full results.
+executeSQLQuery: Execute SELECT query against dataset. Returns {success, queryId, rowCount, preview, analysis}. Use 'analysis' field for insights from full results.
 
-createChart: Create visualization from queryId (auto-fetches 1.5K-10K rows per chart type).
-Chart selection by data types:
-• bar: categorical x + quantitative y (comparisons)
-• line: temporal x + quantitative y (trends)
-• scatter: quantitative x + quantitative y (correlations)
-• boxplot: categorical x + quantitative y (distributions, outliers)
-• area: temporal x + quantitative y (cumulative)
-• pie: categorical (3-7 categories only)
-Decision rule: Categorical+Quant→bar/boxplot, Quant+Quant→scatter, Temporal+Quant→line/area
-Create 5-7 high-impact charts for major distributions and key patterns.
+createChart: Generate Vega-Lite visualization from queryId. Automatically fetches optimal data amount per chart type.
+Chart types: bar (comparisons), line (trends), scatter (correlations), boxplot (distributions), area (cumulative), pie (proportions), heatmap (2D patterns).
+Returns {success, chartSpec, error}.
 </tools>
 
 <sql_rules>
 PostgreSQL dialect - SELECT only against \`${dataset.table_name}\`:
 
-1. For derived fields (CASE), use CTE named 'base', then SELECT from base. GROUP BY alias names or ordinals.
-2. Without CTE, use ordinal grouping: GROUP BY 1,2,3 matching SELECT order.
-3. Alias scope: SELECT aliases are valid in ORDER BY, not in WHERE/GROUP BY/HAVING. Use a CTE or ordinals (GROUP BY 1,2) instead.
-4. Always end with LIMIT ≤ 1500. No semicolons.
-5. String concat: || operator. Dates: DATE_TRUNC(), EXTRACT(). Conditional aggs: FILTER (WHERE ...).
-6. Rates: AVG(CASE WHEN condition THEN 1.0 ELSE 0.0 END). Avoid divide-by-zero with NULLIF.
-7. Quote reserved columns: "default", "user", "order", etc., or alias them in a base CTE (SELECT "default" AS is_default).
-8. WHERE = row filters before aggregation. HAVING = filters on aggregated results.
-9. Custom sort: Add order column in base, or use ARRAY_POSITION(ARRAY['A','B'], col).
-10. Time series: DATE_TRUNC(...) AS period in base, GROUP BY 1, ORDER BY 1.
-11. Booleans: treat y as boolean. Use CASE WHEN y THEN 1.0 ELSE 0.0 END (or y IS TRUE). Never compare y to numbers or strings and never use IN (...) with mixed types.
-12. Don't use ORDER BY inside CTEs unless paired with LIMIT; order at the outermost SELECT.
+1. CTE & Grouping: Use CTE named 'base' for derived fields (CASE, calculated columns). GROUP BY ordinals (1,2,3) or alias names from base CTE. Quote reserved words ("default", "user", "order").
+2. Query limits: LIMIT ≤ 1500. No semicolons.
+3. PostgreSQL functions: || for concat. DATE_TRUNC()/EXTRACT() for temporal. FILTER (WHERE) for conditional aggregations.
+4. Type safety: Booleans as CASE WHEN y THEN 1.0 ELSE 0.0 END. Use NULLIF for divide-by-zero protection. No mixed types in IN().
+5. Filtering: WHERE filters rows before aggregation. HAVING filters aggregated results.
+6. ORDER BY: Only at outermost SELECT (unless CTE needs LIMIT).
 </sql_rules>
 
 <output_format>
-Structure response with TWO sections:
+Deliver analysis in two sections:
 
 === EXECUTIVE SUMMARY ===
 [3-5 key insights in max 10 sentences with evidence inline]
@@ -744,9 +1003,7 @@ Structure response with TWO sections:
 See Charts tab for visualizations and SQL tab for detailed queries.
 
 You might also explore:
-1. [Follow-up question]
-2. [Follow-up question]
-3. [Follow-up question]
+[3 follow-up questions]
 
 === DETAILED ANALYSIS ===
 
@@ -851,20 +1108,25 @@ Before sending, verify: no exploration beyond the question, no validation querie
 - Usage: Reference the 'analysis' field for insights from full result set
 
 **createChart**
-- Purpose: Generate visualization from queryId (automatically fetches optimal data amount per chart type)
-- Chart Type Selection Guide (based on data types):
-  - **bar**: categorical x + quantitative y → comparisons, rankings, categorical breakdowns
-  - **line**: temporal/ordered x + quantitative y → trends over time, ordered sequences
-  - **scatter**: quantitative x + quantitative y → correlations between two numeric variables
-  - **boxplot**: categorical x + quantitative y → distribution comparison across categories (quartiles, outliers)
-  - **area**: temporal x + quantitative y → cumulative patterns, stacked trends
-  - **pie**: single categorical field + quantitative → proportional splits (only use for 3-7 categories)
-- Data Type Decision Tree:
-  • Categorical X + Quantitative Y → bar OR boxplot (use boxplot to show distributions)
-  • Quantitative X + Quantitative Y → scatter
-  • Temporal/Ordered X + Quantitative Y → line OR area
-  • Single Categorical Field → pie (only if ≤7 categories)
-- Usage: Apply when data has visual structure. System automatically fetches 1.5K-10K rows based on chart type needs.
+- Purpose: Generate Vega-Lite visualization from SQL query results (queryId)
+- Returns: {success, chartSpec, error}
+- System automatically fetches optimal data amount per chart type
+
+Chart Selection by Data Types:
+• bar: categorical x + quantitative y (aggregated comparisons) - use for AVG/SUM/COUNT results
+• line: temporal x + quantitative y (trends over time)
+• scatter: quantitative x + quantitative y (correlations)
+• boxplot: categorical x + quantitative y (distributions, outliers) - requires raw data (3+ per category), NOT aggregated
+• area: temporal x + quantitative y (cumulative patterns)
+• pie: categorical only (3-7 categories)
+• heatmap: categorical x + categorical y + quantitative z (bivariate patterns) - requires aggregated data (GROUP BY x, y), use colorField for value
+
+Decision Rule: Categorical+Quantitative → bar (if aggregated) or boxplot (if raw data) | Quantitative+Quantitative → scatter | Temporal+Quantitative → line/area | Categorical+Categorical+Quantitative → heatmap
+
+Data Volume Best Practices:
+1. For scatter/line/area expecting >5K points: aggregate data first (bin numeric values, downsample, or use coarser time granularity)
+2. Boxplots auto-handle large datasets via SQL aggregation
+3. Heatmaps: limit to ≤30 categories per dimension for readability
 
 # SQL TECHNICAL CONSTRAINTS
 

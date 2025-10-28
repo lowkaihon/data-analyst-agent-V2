@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable"
 import { ChatPanel } from "@/components/chat-panel"
-import { DatasetTabs } from "@/components/dataset-tabs"
+import { DataExplorer } from "@/components/data-explorer"
 import { setCurrentDataset, initSessionCleanup } from "@/lib/session-cleanup"
 
 function AnalyzeContent() {
@@ -84,7 +84,7 @@ function AnalyzeContent() {
         </ResizablePanel>
         <ResizableHandle withHandle />
         <ResizablePanel defaultSize={50} minSize={30} className="flex flex-col overflow-hidden">
-          <DatasetTabs
+          <DataExplorer
             datasetId={datasetId}
             reportContent={reportContent}
             onGenerateReport={handleGenerateReport}
