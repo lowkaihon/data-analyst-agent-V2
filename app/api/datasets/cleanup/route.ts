@@ -7,7 +7,16 @@ export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient()
 
-    // Find datasets older than 24 hours
+    // Get authenticated user
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 })
+    }
+
+    // Find datasets older than 24 hours - RLS will automatically filter by user_id
     const cutoffTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 
     const { data: oldDatasets, error: fetchError } = await supabase

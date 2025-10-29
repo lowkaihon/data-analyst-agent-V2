@@ -18,7 +18,16 @@ export async function POST(req: NextRequest) {
 
     const supabase = await createClient()
 
-    // Fetch dataset metadata
+    // Get authenticated user
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 })
+    }
+
+    // Fetch dataset metadata - RLS will automatically filter by user_id
     const { data: dataset, error: datasetError } = await supabase
       .from("datasets")
       .select("*")
@@ -27,7 +36,7 @@ export async function POST(req: NextRequest) {
 
     if (datasetError || !dataset) {
       console.error("Dataset fetch error:", datasetError)
-      return NextResponse.json({ error: "Dataset not found" }, { status: 404 })
+      return NextResponse.json({ error: "Dataset not found or access denied" }, { status: 404 })
     }
 
     // Fetch all successful runs ordered by timestamp (oldest first)

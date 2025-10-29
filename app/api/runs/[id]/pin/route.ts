@@ -8,6 +8,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const supabase = await createClient()
 
+    // Get authenticated user
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 })
+    }
+
+    // RLS will automatically ensure user can only update their own runs
     const { error } = await supabase.from("runs").update({ pinned }).eq("id", id)
 
     if (error) {

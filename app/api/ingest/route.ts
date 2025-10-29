@@ -93,11 +93,20 @@ export async function POST(req: NextRequest) {
 
     const supabase = await createClient()
 
+    // Get the authenticated user (including anonymous users)
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 })
+    }
+
     // Generate table name first (before creating the dataset)
     const tempId = crypto.randomUUID()
     const tableName = sanitizeTableName(tempId)
 
-    // Create dataset record
+    // Create dataset record with user_id
     const { data: dataset, error: datasetError } = await supabase
       .from("datasets")
       .insert({
@@ -107,6 +116,7 @@ export async function POST(req: NextRequest) {
         table_name: tableName,
         row_count: records.length,
         column_count: columns.length,
+        user_id: user.id,
       })
       .select()
       .single()

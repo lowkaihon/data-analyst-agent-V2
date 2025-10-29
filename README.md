@@ -553,13 +553,16 @@ The AI agent follows these PostgreSQL-specific patterns to avoid common errors:
 - `ds_<datasetId>`: Dynamic tables for each uploaded dataset
 
 ### Security
+- **Anonymous Authentication**: Automatic session-based user isolation with Row Level Security (RLS)
+  - Each browser session is isolated - users can only see their own datasets
+  - No login required - seamless user experience
+  - See [RLS_IMPLEMENTATION.md](./RLS_IMPLEMENTATION.md) for implementation details and troubleshooting
 - **SQL Safety**: SELECT-only queries with automatic LIMIT (≤1500 for analysis, up to 10K for visualizations with automatic aggregation for boxplots on larger datasets), no semicolons allowed
 - **Error Recovery**: Helpful error messages with fix suggestions (e.g., lists available columns on column-not-found errors)
 - **Timeout Protection**:
   - Route timeout: 300 seconds (5 minutes, entire analysis session)
   - Individual query timeouts: 30s (normal mode), 60s (deep dive mode)
 - **Input Validation**: CSV size and column limits enforced
-- **Session-Based**: Datasets deleted on browser close (in development)
 
 ## Project Structure
 
@@ -601,21 +604,22 @@ The AI agent follows these PostgreSQL-specific patterns to avoid common errors:
 │   ├── sql-guard.ts                # SQL safety validation
 │   ├── types.ts                    # TypeScript definitions
 │   ├── utils.ts                    # Utility functions
+│   ├── ...                         # Additional utilities (vega-config, vega-validator, response-parser, etc.)
 │   └── supabase/
 │       ├── client.ts               # Supabase client (browser)
 │       └── server.ts               # Supabase client (server)
 ├── scripts/
 │   ├── reset_database.sql          # Database reset script
 │   └── initialize_database.sql     # Database initialization
-├── styles/
-│   └── globals.css                 # Global stylesheet
 ├── components.json                 # shadcn/ui configuration
 ├── next.config.mjs                 # Next.js configuration
 ├── postcss.config.mjs              # PostCSS configuration
 ├── tsconfig.json                   # TypeScript configuration
 ├── package.json                    # Dependencies
 ├── pnpm-lock.yaml                  # Lock file
+├── middleware.ts                   # Anonymous authentication middleware
 ├── CLAUDE.md                       # Development guidance for Claude Code
+├── RLS_IMPLEMENTATION.md           # RLS security implementation guide
 └── README.md                       # Project documentation
 ```
 

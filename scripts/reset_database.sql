@@ -15,6 +15,10 @@ DROP INDEX IF EXISTS idx_runs_type;
 DROP INDEX IF EXISTS idx_runs_pinned;
 DROP INDEX IF EXISTS idx_chat_turns_dataset_id;
 DROP INDEX IF EXISTS idx_reports_dataset_id;
+DROP INDEX IF EXISTS idx_datasets_user_id;
+DROP INDEX IF EXISTS idx_chat_turns_user_id;
+DROP INDEX IF EXISTS idx_runs_user_id;
+DROP INDEX IF EXISTS idx_reports_user_id;
 
 -- Note: After running this script, you MUST run:
 -- scripts/initialize_database.sql

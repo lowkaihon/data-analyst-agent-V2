@@ -37,8 +37,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
       return new Response("Invalid messages format", { status: 400 })
     }
 
-    // Fetch dataset metadata
+    // Fetch dataset metadata and verify ownership
     const supabase = await createServerClient()
+
+    // Get authenticated user
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return new Response("Authentication required", { status: 401 })
+    }
+
+    // Fetch dataset - RLS will automatically filter by user_id
     const { data: dataset, error: datasetError } = await supabase
       .from("datasets")
       .select("*")
@@ -47,7 +58,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
 
     if (datasetError || !dataset) {
       console.error("Dataset fetch error:", datasetError)
-      return new Response("Dataset not found", { status: 404 })
+      return new Response("Dataset not found or access denied", { status: 404 })
     }
 
     console.log("Dataset found:", dataset.table_name)
@@ -183,6 +194,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
               insight: reasoning,
               sample: result.rows, // Store actual results as JSONB
               columns: result.fields.map((f: any) => f.name), // Store column order from PostgreSQL
+              user_id: user.id,
             }).select('id').single()
 
             if (insertError) {
@@ -268,6 +280,7 @@ Format your response with:
               duration_ms: durationMs,
               error: error.message,
               insight: reasoning,
+              user_id: user.id,
             })
 
             return {
@@ -949,6 +962,7 @@ Format your response with:
             sql: sqlQuery, // Store source SQL query
             sample: data, // Store the data results
             columns: columns, // Store column names
+            user_id: user.id,
           })
 
           return {
@@ -1247,6 +1261,7 @@ You might also ask:
               status: "success",
               ai_response: text,
               insight: isDeepDive ? "Deep-dive analysis summary" : "Analysis summary",
+              user_id: user.id,
             })
 
             console.log("AI response stored successfully")

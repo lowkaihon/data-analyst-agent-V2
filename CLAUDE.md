@@ -57,21 +57,22 @@ This project strictly uses **pnpm**. Do not use npm or yarn.
 │   ├── sql-guard.ts                # SQL safety validation
 │   ├── types.ts                    # TypeScript definitions
 │   ├── utils.ts                    # Utility functions
+│   ├── ...                         # Additional utilities (vega-config, vega-validator, response-parser, etc.)
 │   └── supabase/
 │       ├── client.ts               # Supabase client (browser)
 │       └── server.ts               # Supabase client (server)
 ├── scripts/
 │   ├── reset_database.sql          # Database reset script
 │   └── initialize_database.sql     # Database initialization
-├── styles/
-│   └── globals.css                 # Global stylesheet
 ├── components.json                 # shadcn/ui configuration
 ├── next.config.mjs                 # Next.js configuration
 ├── postcss.config.mjs              # PostCSS configuration
 ├── tsconfig.json                   # TypeScript configuration
 ├── package.json                    # Dependencies
 ├── pnpm-lock.yaml                  # Lock file
+├── middleware.ts                   # Anonymous authentication middleware
 ├── CLAUDE.md                       # Development guidance for Claude Code
+├── RLS_IMPLEMENTATION.md           # RLS security implementation guide
 └── README.md                       # Project documentation
 ```
 
