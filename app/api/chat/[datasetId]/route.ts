@@ -376,7 +376,7 @@ Format your response with:
           subtitle: z.string().optional().describe("Optional subtitle for additional context"),
           xAxisLabel: z.string().optional().describe("Custom x-axis label (default: xField name)"),
           yAxisLabel: z.string().optional().describe("Custom y-axis label (default: yField name)"),
-          colorField: z.string().optional().describe("Optional field to color by (categorical for bar/line/scatter/area; quantitative value field for heatmap; not used for pie/boxplot)"),
+          colorField: z.string().optional().describe("Field to color by for categorical grouping. ESSENTIAL for scatter plots with grouped data (e.g., GROUP BY with 2+ fields) - enables legends and distinguishes categories. Without colorField, users cannot identify what each point represents. Use: categorical for bar/line/scatter/area; quantitative value field for heatmap; not used for pie/boxplot. Example: For 'GROUP BY job, education', use colorField='job' or 'education' to reveal patterns and show legend."),
         }),
         execute: async ({ queryId, chartType, xField, yField, title, subtitle, xAxisLabel, yAxisLabel, colorField }) => {
           console.log("Generating chart:", chartType, "for queryId:", queryId)
@@ -577,6 +577,11 @@ Format your response with:
           const yAxisFormat = (maxYValue < 2 && maxYValue > 0) ? ",.2f" : ",.0f"
           const tooltipFormat = yAxisFormat
 
+          // Analyze x-values to determine optimal format (for scatter plots with quantitative x-axis)
+          const xValues = data.map(d => d[xField]).filter(v => typeof v === 'number' && !isNaN(v))
+          const maxXValue = xValues.length > 0 ? Math.max(...xValues) : 1
+          const xAxisFormat = (maxXValue < 2 && maxXValue > 0) ? ",.2f" : ",.0f"
+
           // Base spec with accessibility and data handling best practices
           let spec: any = {
             $schema: "https://vega.github.io/schema/vega-lite/v5.json",
@@ -610,6 +615,7 @@ Format your response with:
                   labelOverlap: "greedy",
                   labelPadding: 5,
                   labelLimit: 100,
+                  ...((xType === "quantitative" || xType === "ordinal") && { format: xAxisFormat }),
                 },
               },
               y: {
@@ -637,7 +643,7 @@ Format your response with:
                 color: { value: "#1f77b4" }, // Tableau10 blue - colorblind-safe
               }),
               tooltip: [
-                { field: xField, type: xType, title: xAxisLabel || xField, ...(isXTemporal && { format: "%B %d, %Y" }) },
+                { field: xField, type: xType, title: xAxisLabel || xField, ...(isXTemporal && { format: "%B %d, %Y" }), ...((xType === "quantitative" || xType === "ordinal") && !isXTemporal && { format: xAxisFormat }) },
                 { field: yField, type: "quantitative", title: yAxisLabel || yField, format: tooltipFormat },
                 ...(colorField ? [{ field: colorField, type: "nominal", title: colorField }] : []),
               ],
@@ -664,6 +670,7 @@ Format your response with:
                   labelOverlap: "greedy" as const, // Prevent label overlap
                   labelPadding: 5,
                   labelLimit: 100,
+                  ...((xType === "quantitative" || xType === "ordinal") && { format: xAxisFormat }),
                 },
               },
               y: {
@@ -683,7 +690,7 @@ Format your response with:
                 color: { value: "#1f77b4" }, // Tableau10 blue - colorblind-safe
               }),
               tooltip: [
-                { field: xField, type: xType, title: xAxisLabel || xField, ...(isXTemporal && { format: "%B %d, %Y" }) },
+                { field: xField, type: xType, title: xAxisLabel || xField, ...(isXTemporal && { format: "%B %d, %Y" }), ...((xType === "quantitative" || xType === "ordinal") && !isXTemporal && { format: xAxisFormat }) },
                 { field: yField, type: "quantitative", title: yAxisLabel || yField, format: tooltipFormat },
                 ...(colorField ? [{ field: colorField, type: "nominal", title: colorField }] : []),
               ],
@@ -701,7 +708,7 @@ Format your response with:
                 field: xField,
                 type: "quantitative",
                 axis: {
-                  format: yAxisFormat,
+                  format: xAxisFormat,
                   title: xAxisLabel || xField,
                   labelOverlap: "greedy" as const,
                   labelPadding: 5,
@@ -731,8 +738,8 @@ Format your response with:
                 color: { value: "#1f77b4" }, // Tableau10 blue - colorblind-safe
               }),
               tooltip: [
-                { field: xField, type: "quantitative", title: xAxisLabel || xField, format: tooltipFormat },
-                { field: yField, type: "quantitative", title: yAxisLabel || yField, format: tooltipFormat },
+                { field: xField, type: "quantitative", title: xAxisLabel || xField, format: xAxisFormat },
+                { field: yField, type: "quantitative", title: yAxisLabel || yField, format: yAxisFormat },
                 ...(colorField ? [{ field: colorField, type: "nominal", title: colorField }] : []),
               ],
             }
@@ -758,6 +765,7 @@ Format your response with:
                   labelOverlap: "greedy" as const, // Prevent label overlap
                   labelPadding: 5,
                   labelLimit: 100,
+                  ...((xType === "quantitative" || xType === "ordinal") && { format: xAxisFormat }),
                 },
               },
               y: {
@@ -777,7 +785,7 @@ Format your response with:
                 color: { value: "#1f77b4" }, // Tableau10 blue - colorblind-safe
               }),
               tooltip: [
-                { field: xField, type: xType, title: xAxisLabel || xField, ...(isXTemporal && { format: "%B %d, %Y" }) },
+                { field: xField, type: xType, title: xAxisLabel || xField, ...(isXTemporal && { format: "%B %d, %Y" }), ...((xType === "quantitative" || xType === "ordinal") && !isXTemporal && { format: xAxisFormat }) },
                 { field: yField, type: "quantitative", title: yAxisLabel || yField, format: tooltipFormat },
                 ...(colorField ? [{ field: colorField, type: "nominal", title: colorField }] : []),
               ],
@@ -1100,7 +1108,9 @@ Format your response with:
     }
 
     // Engineered the AI prompt based on GPT-5-mini (low reasoning) best practices
-    const deepDiveSystemPrompt = `<role>
+    const deepDiveSystemPrompt = 
+/*    
+`<role>
 Data analyst performing comprehensive analysis.${dataset.user_context ? `
 Context: "${dataset.user_context}"` : ''}
 </role>
@@ -1201,7 +1211,114 @@ Limitations & Data Quality:
 
 Use plain text with numbered lists. No markdown formatting.
 STOP after detailed analysis - do not add recommendations or other sections.
+</output_format>` */
+
+
+`<role>
+Data analyst performing comprehensive analysis.${dataset.user_context ? `
+Context: "${dataset.user_context}"` : ''}
+</role>
+
+<dataset>
+Table: \`${dataset.table_name}\`
+Rows: ${dataset.row_count}, Columns: ${dataset.column_count}
+</dataset>
+
+<task>
+Conduct a thorough, exhaustive analysis of this dataset using SQL queries and visualizations.
+
+IMPORTANT: You are starting fresh with this deep-dive analysis. Previous chat history is not available. The user has provided all necessary context in their request above. Focus on the dataset and user's stated objectives.
+
+This is a comprehensive analysis requiring multiple rounds of exploration, validation, and hypothesis testing—not a quick summary.
+
+Step budget: You have 30 steps available. Typical comprehensive analysis uses 20-30 steps.
+</task>
+
+<success_criteria>
+Analysis is complete when ALL requirements are met:
+
+Required Deliverables:
+□ 5-7 high-impact visualizations covering major distributions, trends, and key patterns
+□ 3-5 actionable insights with strong quantitative evidence (sample sizes, metrics, comparisons)
+□ Key claims validated through confirmation queries
+□ Significant outliers, patterns, and anomalies investigated
+□ Standout segments identified with detailed breakdowns
+□ Hypotheses tested across relevant subgroups and dimensions
+□ Major dimension interactions explored
+
+Stop when additional queries yield diminishing insights.
+</success_criteria>
+
+<analysis_approach>
+Effective analysis explores multiple angles:
+• When patterns emerge, validate them across subgroups
+• When segments stand out, drill into their characteristics
+• When hypotheses form, test them with targeted queries
+• When one dimension is explored, examine related dimensions
+• When outliers appear, investigate their context
+</analysis_approach>
+
+<tools>
+executeSQLQuery: Execute SELECT query. Returns {success, queryId, rowCount, preview, analysis}. Use 'analysis' field for insights from full results.
+
+createChart: Create visualization from queryId. Types: bar (comparisons), line (trends), scatter (correlations), boxplot (distributions), area (cumulative), pie (proportions), heatmap (2D patterns). Returns {success, chartSpec, error}.
+
+Note: createChart requires a queryId from a completed executeSQLQuery call. These tools must be executed sequentially, never in parallel.
+</tools>
+
+<sql_rules>
+PostgreSQL dialect - SELECT only against \`${dataset.table_name}\`:
+
+1. CTE Usage: Use CTE named 'base' for CASE expressions or derived fields, then SELECT from base (never from original table). If CTE uses aggregation (COUNT, SUM, AVG, MIN, MAX), it MUST have GROUP BY clause.
+2. Grouping: GROUP BY using ordinals (1,2,3) or CTE alias names. Never GROUP BY same-query SELECT aliases.
+3. Query Limits: Always end with LIMIT ≤ 1500. Never use semicolons.
+4. Functions: String concat (||), dates (DATE_TRUNC, EXTRACT, TO_TIMESTAMP, ::date), conditional aggregations (FILTER WHERE).
+5. Date Constraints: Never use Oracle functions (to_date). Never cast temporal types to integers. Use EXTRACT(MONTH/YEAR FROM col) for numeric date components.
+6. Rate Calculations: Use AVG(CASE WHEN condition THEN 1.0 ELSE 0.0 END). Prevent divide-by-zero with NULLIF.
+7. Reserved Words: Quote reserved columns ("default", "user", "order") or alias in base CTE (SELECT "default" AS is_default).
+8. Filtering: Use WHERE to filter rows before aggregation. Use HAVING to filter aggregated results.
+9. Custom Sort: Add order column in base CTE, or use ARRAY_POSITION(ARRAY['A','B'], col). For months: ARRAY_POSITION(ARRAY['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'], LOWER(month_col)).
+10. Boolean Handling: Treat boolean columns as boolean. Use CASE WHEN bool_col THEN 1.0 ELSE 0.0 END or bool_col IS TRUE. Never compare booleans to numbers/strings or use IN (...) with mixed types.
+</sql_rules>
+
+<output_format>
+Structure response with TWO sections:
+
+=== EXECUTIVE SUMMARY ===
+[3-5 key insights in max 10 sentences with evidence inline]
+
+See Charts tab for visualizations and SQL tab for detailed queries.
+
+You might also explore:
+[3 follow-up questions]
+
+=== DETAILED ANALYSIS ===
+
+Key Findings:
+[Numbered list with evidence, metrics, sample sizes]
+
+Validation Performed:
+[Numbered list of checks run and results]
+
+Hypothesis Tests & Segment Drills:
+[Numbered list of tests performed and findings]
+
+Standout Segments:
+[Numbered list of segments with size and key metrics]
+
+Limitations & Data Quality:
+[Numbered list of caveats and data issues]
+
+<constraints>
+• Plain text only (no markdown, code blocks, tables)
+• Use numbered lists with periods
+• Use exact section headers
+• Stop after Limitations section - no additional recommendations or sections
+</constraints>
+
 </output_format>`
+
+
 
     // Normal Mode
     // Engineered the AI prompt based on GPT-4o best practices
@@ -1216,7 +1333,14 @@ Dataset Context: "${dataset.user_context}"` : ''}
 
 # REASONING PROTOCOL
 
-Perform all query planning, reasoning, and reflection internally. Only display final answers, SQL execution results, and visualizations. Never expose intermediate logic, thought processes, or decision-making steps.
+Perform all query planning, reasoning, and reflection internally without narrating them. Do not expose intermediate logic, thought processes, or decision-making steps.
+
+CRITICAL: After executing tools (executeSQLQuery, createChart), you MUST provide a text response that:
+- Directly answers the user's question
+- References evidence from tool results
+- Follows the OUTPUT FORMAT exactly
+
+Tool execution alone is NOT a complete response. Your text synthesis is required.
 
 # DATASET SPECIFICATION
 
@@ -1230,7 +1354,7 @@ These patterns must remain consistent across all responses:
 
 1. **Scope Discipline**: Respond only to the specific question asked. Do not explore adjacent topics, validate with additional queries, or perform comprehensive analysis unless explicitly requested.
 
-2. **Tool Usage**: Execute SQL via executeSQLQuery. Create visualizations via createChart for datasets with 5+ rows showing visual patterns.
+2. **Tool Usage**: Execute SQL via executeSQLQuery. Create visualizations via createChart for query results that return multiple rows - charts enhance understanding of comparisons, trends, and distributions.
 
 3. **Evidence Requirement**: Every answer must include concrete evidence from query results.
 
@@ -1251,7 +1375,7 @@ When user message contains only schema information (column names, types, row cou
 ## Workflow
 1. Parse the user's specific question
 2. Execute minimum SQL queries required to answer completely
-3. Create visualizations if data is visual (5+ rows, clear patterns)
+3. Create visualizations when appropriate for the data and question
 4. State direct answer with supporting evidence
 5. STOP - await next user question
 
@@ -1275,6 +1399,10 @@ Response is complete when:
 □ Artifacts reference is included
 
 Before sending, verify: no exploration beyond the question, no validation queries, no unsolicited deep-dives.
+
+## Response Completion Requirement
+
+CRITICAL: Every response must conclude with a text message that synthesizes tool results and answers the user's question. Tool calls alone (executeSQLQuery, createChart) are NOT sufficient - they gather data but do not communicate the answer to the user. You must always provide the final text synthesis following the OUTPUT FORMAT.
 
 # TOOL SPECIFICATIONS
 
@@ -1303,6 +1431,8 @@ Data Volume Best Practices:
 1. For scatter/line/area expecting >5K points: aggregate data first (bin numeric values, downsample, or use coarser time granularity)
 2. Boxplots auto-handle large datasets via SQL aggregation
 3. Heatmaps: limit to ≤30 categories per dimension for readability
+
+Important: For scatter plots with grouped data (queries with GROUP BY on 2+ fields), always use the colorField parameter. This adds color encoding and automatic legends so users can identify what each point represents. Example: Data grouped by job and education should use colorField='job' or 'education'.
 
 # SQL TECHNICAL CONSTRAINTS
 
@@ -1378,7 +1508,17 @@ You might also ask:
           )
         }
       },
-      onFinish: async ({ text, finishReason }) => {
+      onFinish: async ({ text, finishReason, steps }) => {
+        // Response validation: Check if text response is missing
+        if (!text || text.trim().length === 0) {
+          console.error("⚠️  EMPTY TEXT RESPONSE DETECTED:", {
+            finishReason,
+            stepCount: steps?.length || 0,
+            mode: isDeepDive ? "deep-dive" : "normal",
+            lastStepToolCalls: steps?.[steps.length - 1]?.toolCalls?.map(tc => tc.toolName) || "none"
+          })
+        }
+
         // Capture AI response for report generation (especially valuable for deep-dive mode)
         if (text && text.trim().length > 0) {
           console.log("Capturing AI response for report generation:", text.substring(0, 100) + "...")

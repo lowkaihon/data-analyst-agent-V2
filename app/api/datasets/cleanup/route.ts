@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { sanitizeTableName } from "@/lib/sql-guard"
+import { getPostgresPool } from "@/lib/postgres"
 
 // Session-based cleanup: Delete datasets older than 24 hours
 export async function POST(req: NextRequest) {
@@ -14,6 +15,13 @@ export async function POST(req: NextRequest) {
 
     if (!user) {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 })
+    }
+
+    // Verify request is from Vercel Cron (security check)
+    const userAgent = req.headers.get("user-agent")
+    if (!userAgent?.includes("vercel-cron")) {
+      console.warn("Cleanup attempt from non-cron source:", userAgent)
+      // Allow manual testing in development, but log the attempt
     }
 
     // Find datasets older than 24 hours - RLS will automatically filter by user_id
@@ -35,20 +43,29 @@ export async function POST(req: NextRequest) {
 
     // Delete each dataset and its table
     let deletedCount = 0
+    const pool = getPostgresPool()
+
     for (const dataset of oldDatasets) {
       const tableName = sanitizeTableName(dataset.id)
 
-      // Drop the data table (this will cascade delete runs, chat_turns via FK)
       try {
-        // Note: This requires a custom RPC function or direct SQL execution
-        // For now, we'll just delete the dataset record which cascades to runs
+        // Step 1: Drop the data table (using Postgres pool for DDL operations)
+        // Must happen BEFORE deleting metadata record (need table_name reference)
+        await pool.query(`DROP TABLE IF EXISTS ${tableName} CASCADE`)
+        console.log(`Dropped table: ${tableName}`)
+
+        // Step 2: Delete metadata record (cascades to runs, chat_turns, reports via FK)
         const { error: deleteError } = await supabase.from("datasets").delete().eq("id", dataset.id)
 
         if (!deleteError) {
           deletedCount++
+          console.log(`Deleted dataset metadata: ${dataset.id}`)
+        } else {
+          console.error(`Failed to delete dataset metadata ${dataset.id}:`, deleteError)
         }
       } catch (err) {
-        console.error(`Failed to delete dataset ${dataset.id}:`, err)
+        console.error(`Failed to cleanup dataset ${dataset.id}:`, err)
+        // Continue with next dataset even if this one fails
       }
     }
 

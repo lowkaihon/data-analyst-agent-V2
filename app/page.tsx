@@ -4,7 +4,7 @@ import type React from "react"
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Upload } from "lucide-react"
+import { Upload, Github } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -104,8 +104,18 @@ export default function UploadPage() {
     <div className="flex min-h-screen items-center justify-center p-6">
       <Card className="w-full max-w-2xl">
         <CardHeader>
-          <CardTitle className="text-2xl">Data Analyst Agent</CardTitle>
-          <CardDescription>Upload your CSV file to start analyzing your data</CardDescription>
+          <div className="flex items-start justify-between">
+            <div className="flex flex-col gap-1.5">
+              <CardTitle className="text-2xl">Data Analyst Agent</CardTitle>
+              <CardDescription>Upload your CSV file to start analyzing your data</CardDescription>
+            </div>
+            <Button variant="ghost" asChild>
+              <a href="https://github.com/lowkaihon/data-analyst-agent-V2" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">
+                <Github className="h-4 w-4" />
+                GitHub
+              </a>
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="flex flex-col gap-6">
@@ -167,6 +177,14 @@ export default function UploadPage() {
                     <p className="text-sm font-medium text-destructive">{error}</p>
                   </div>
                 )}
+                <div className="w-full text-left space-y-1 px-4 py-3 bg-muted/50 rounded-md">
+                  <p className="text-xs font-medium text-muted-foreground">Privacy Notice:</p>
+                  <ul className="text-xs text-muted-foreground space-y-0.5">
+                    <li>• Data automatically deleted after 24 hours</li>
+                    <li>• Query results sent to OpenAI for analysis</li>
+                    <li>• Do not upload sensitive data</li>
+                  </ul>
+                </div>
               </div>
             </div>
 

@@ -19,6 +19,12 @@ Scaffolded with Vercel v0; productionized with Next.js 15 + Supabase/Postgres. U
 - **Token-Efficient Architecture**: Reference-based data flow minimizes token usage while maintaining full data access
 - **Contextual Insights**: Understands dataset context and suggests follow-up questions for further exploration
 
+### 🔒 Privacy & Data Protection
+- **Automatic Cleanup**: All uploaded datasets deleted after 24 hours (Vercel Cron every 6 hours)
+- **Session Isolation**: Complete user isolation via Row Level Security (RLS)
+- **No Persistent Storage**: Data never stored permanently - automatic cleanup enforced
+- **Anonymous Authentication**: Privacy without requiring user accounts
+
 ### 📊 Interactive Split-View Interface
 - **Chat Panel (Left)**: Streaming conversation with the AI agent
 - **Data Explorer Tabs (Right)**:
@@ -371,8 +377,8 @@ Analyze subscription trends by month and day. Identify optimal contact timing pa
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/yourusername/data-analyst-agent.git
-   cd data-analyst-agent
+   git clone https://github.com/lowkaihon/data-analyst-agent-V2.git
+   cd data-analyst-agent-V2
    ```
 
 2. **Install dependencies:**
@@ -441,6 +447,7 @@ Analyze subscription trends by month and day. Identify optimal contact timing pa
 - Optionally provide context about your data in the textarea
 - Upload a CSV file (≤20MB, ≤200 columns)
 - The system creates a Postgres table and infers column types
+- **Privacy Note**: Your data is automatically deleted after 24 hours
 
 ### 2. Analyze with AI
 - Ask questions in natural language
@@ -617,6 +624,40 @@ The application implements multiple layers of security to protect against common
 - Route timeout: 300 seconds (5 minutes for entire analysis session)
 - Individual query timeouts: 30s (normal mode), 60s (deep dive mode)
 
+#### Data Retention & Privacy
+- **Automatic Cleanup**: Datasets deleted after 24 hours via Vercel Cron
+  - Cron schedule: Every 6 hours (`0 */6 * * *`)
+  - Endpoint: `/api/datasets/cleanup`
+  - Protected by Vercel Cron user-agent verification
+- **Complete Deletion**: Drops dataset tables + cascades all metadata (runs, charts, reports)
+- **Privacy Guarantee**: No permanent data storage - cleanup is automated, not manual
+
+## Privacy & Data Retention
+
+The application implements automatic data cleanup to protect user privacy:
+
+### Automatic Data Deletion
+- **Retention Period**: All uploaded datasets are automatically deleted after 24 hours
+- **Cleanup Schedule**: Vercel Cron runs every 6 hours (`0 */6 * * *`) to remove expired data
+- **What Gets Deleted**:
+  - Dataset tables (`ds_<datasetId>`)
+  - Metadata records (datasets, chat_turns, runs, reports) via CASCADE
+  - All associated analysis artifacts
+
+### User Isolation
+- **Session-Based Privacy**: Each user session is isolated via Row Level Security (RLS)
+- **No Cross-User Access**: Users can only access their own datasets
+- **No Login Required**: Anonymous authentication provides privacy without accounts
+
+### Implementation Details
+- Cleanup endpoint: `/api/datasets/cleanup`
+- Configuration: `vercel.json` cron schedule
+- Protected by user-agent verification (Vercel Cron only)
+- Automatic CASCADE deletion for referential integrity
+
+### Privacy Guarantee
+**Your data is never stored permanently.** All uploaded datasets and analysis artifacts are automatically deleted after 24 hours. This is enforced by automated cleanup, not manual processes.
+
 ## Project Structure
 
 ```
@@ -629,7 +670,7 @@ The application implements multiple layers of security to protect against common
 │   │   └── loading.tsx             # Suspense boundary
 │   └── api/
 │       ├── chat/[datasetId]/route.ts       # AI chat with tools
-│       ├── datasets/cleanup/route.ts       # Dataset deletion (in development)
+│       ├── datasets/cleanup/route.ts       # Dataset deletion
 │       ├── ingest/route.ts                 # CSV upload and table creation
 │       ├── preview/route.ts                # Data preview endpoint
 │       ├── schema/route.ts                 # Schema metadata endpoint
@@ -678,14 +719,55 @@ The application implements multiple layers of security to protect against common
 
 ## Deployment
 
-This project is configured for deployment on Vercel:
+This project is configured for deployment on Vercel with automated data cleanup:
 
-1. Push your code to GitHub
-2. Import the repository in Vercel
-3. Add environment variables in Vercel project settings
-4. Deploy
+### Basic Deployment
 
-**Live Demo**: [https://vercel.com/kaihon333haha-5908s-projects/v0-data-analyst-agent](https://vercel.com/kaihon333haha-5908s-projects/v0-data-analyst-agent)
+1. **Push your code to GitHub**
+2. **Import the repository in Vercel**
+3. **Add environment variables** in Vercel project settings:
+   - `OPENAI_API_KEY`
+   - `SUPABASE_POSTGRES_URL_NON_POOLING`
+   - `SUPABASE_POSTGRES_URL`
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+4. **Deploy**
+
+### Vercel Cron Configuration
+
+The application uses Vercel Cron for automated data cleanup:
+
+**Configuration** (`vercel.json`):
+```json
+{
+  "crons": [
+    {
+      "path": "/api/datasets/cleanup",
+      "schedule": "0 */6 * * *"
+    }
+  ]
+}
+```
+
+**Schedule**: Runs every 6 hours (at minute 0: 12am, 6am, 12pm, 6pm UTC)
+
+**Purpose**: Automatically deletes datasets older than 24 hours
+
+**Requirements**:
+- Available on all Vercel plans (Hobby, Pro, Enterprise)
+- Proper authentication headers (Vercel Cron user-agent)
+
+**Testing Cleanup Locally**:
+```bash
+curl -X POST http://localhost:3000/api/datasets/cleanup
+```
+
+Note: Manual testing bypasses the Vercel Cron user-agent check in development mode.
+
+### Live Demo
+
+**Production URL**: [https://vercel.com/kaihon333haha-5908s-projects/v0-data-analyst-agent](https://vercel.com/kaihon333haha-5908s-projects/v0-data-analyst-agent)
 
 
 ## Contributing

@@ -2,7 +2,9 @@
 
 import { Suspense, useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
+import { Github } from "lucide-react"
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable"
+import { Button } from "@/components/ui/button"
 import { ChatPanel } from "@/components/chat-panel"
 import { DataExplorer } from "@/components/data-explorer"
 import { setCurrentDataset, initSessionCleanup } from "@/lib/session-cleanup"
@@ -72,8 +74,17 @@ function AnalyzeContent() {
   }
 
   return (
-    <div className="h-screen w-full">
-      <ResizablePanelGroup direction="horizontal" className="h-full">
+    <div className="h-screen w-full flex flex-col">
+      <header className="flex items-center justify-between px-6 py-3 border-b">
+        <h1 className="text-lg font-semibold">Data Analyst Agent</h1>
+        <Button variant="ghost" asChild>
+          <a href="https://github.com/lowkaihon/data-analyst-agent-V2" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">
+            <Github className="h-4 w-4" />
+            GitHub
+          </a>
+        </Button>
+      </header>
+      <ResizablePanelGroup direction="horizontal" className="flex-1">
         <ResizablePanel defaultSize={50} minSize={30} className="flex flex-col overflow-hidden">
           <ChatPanel
             datasetId={datasetId}

@@ -29,7 +29,7 @@ This project strictly uses **pnpm**. Do not use npm or yarn.
 │   │   └── loading.tsx             # Suspense boundary
 │   └── api/
 │       ├── chat/[datasetId]/route.ts       # AI chat with tools
-│       ├── datasets/cleanup/route.ts       # Dataset deletion (in development)
+│       ├── datasets/cleanup/route.ts       # Dataset deletion
 │       ├── ingest/route.ts                 # CSV upload and table creation
 │       ├── preview/route.ts                # Data preview endpoint
 │       ├── schema/route.ts                 # Schema metadata endpoint

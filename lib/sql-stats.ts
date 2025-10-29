@@ -24,22 +24,9 @@ export function convertToStatsQuery(
   // Remove LIMIT clause (case-insensitive)
   cleanSql = cleanSql.replace(/\s+LIMIT\s+\d+\s*$/i, '')
 
-  // Extract the FROM clause and everything after it (WHERE, JOIN, etc.)
-  // This regex captures FROM ... up to potential GROUP BY, ORDER BY, or end
-  const fromMatch = cleanSql.match(/\bFROM\b(.*?)(?:\bGROUP\s+BY\b|\bORDER\s+BY\b|$)/is)
-
-  if (!fromMatch) {
-    throw new Error('Could not parse FROM clause from SQL query')
-  }
-
-  const fromClause = fromMatch[1].trim()
-
-  // Extract WHERE clause if it exists
-  const whereMatch = cleanSql.match(/\bWHERE\b(.*?)(?:\bGROUP\s+BY\b|\bORDER\s+BY\b|\bLIMIT\b|$)/is)
-  const whereClause = whereMatch ? `WHERE ${whereMatch[1].trim()}` : ''
-
-  // Build the statistical aggregation query
-  // PERCENTILE_CONT requires WITHIN GROUP (ORDER BY ...)
+  // Wrap the entire query as a subquery to handle CTEs, complex queries, etc.
+  // This is more robust than trying to parse and modify the query structure
+  // PostgreSQL supports CTEs inside subqueries: SELECT ... FROM (WITH ... SELECT ...) as data
   const statsQuery = `
 SELECT
   ${xField},
@@ -49,8 +36,7 @@ SELECT
   PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY ${yField}) as q3,
   MAX(${yField}) as max,
   COUNT(*) as count
-FROM ${fromClause}
-${whereClause}
+FROM (${cleanSql}) as data
 GROUP BY ${xField}
 ORDER BY ${xField}
   `.trim()
