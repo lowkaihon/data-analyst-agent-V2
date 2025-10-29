@@ -43,6 +43,21 @@ export async function middleware(request: NextRequest) {
     } else {
       console.log('Created anonymous session:', data.user?.id)
     }
+  } else {
+    // Check if session is about to expire (within 1 hour)
+    const expiresAt = session.expires_at ? new Date(session.expires_at * 1000) : null
+    const now = new Date()
+    const oneHour = 60 * 60 * 1000
+
+    if (expiresAt && expiresAt.getTime() - now.getTime() < oneHour) {
+      // Refresh session
+      const { error } = await supabase.auth.refreshSession()
+      if (error) {
+        console.error('Failed to refresh session:', error)
+      } else {
+        console.log('Session refreshed successfully')
+      }
+    }
   }
 
   return response

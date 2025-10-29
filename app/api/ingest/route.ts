@@ -7,6 +7,23 @@ import { parse } from "csv-parse/sync"
 const MAX_FILE_SIZE = 20 * 1024 * 1024 // 20MB
 const MAX_COLUMNS = 200
 
+// Sanitize column names to prevent SQL injection
+function sanitizeColumnName(name: string): string {
+  // Replace special characters with underscore
+  // Only allow alphanumeric, underscore, and space
+  let sanitized = name.replace(/[^a-zA-Z0-9_ ]/g, "_")
+
+  // Trim and limit length to PostgreSQL column name limit (63 chars)
+  sanitized = sanitized.trim().substring(0, 63)
+
+  // If name becomes empty after sanitization, use a default
+  if (sanitized.length === 0) {
+    sanitized = "column"
+  }
+
+  return sanitized
+}
+
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData()
@@ -17,9 +34,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 })
     }
 
+    // Validate file type (MIME type)
+    if (file.type !== "text/csv" && file.type !== "text/plain" && file.type !== "") {
+      return NextResponse.json(
+        { error: "Invalid file type. Only CSV files are allowed." },
+        { status: 400 },
+      )
+    }
+
+    // Validate file extension
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      return NextResponse.json(
+        { error: "Invalid file extension. Only .csv files are allowed." },
+        { status: 400 },
+      )
+    }
+
     // Validate file size
     if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json({ error: "File size must be less than 20MB" }, { status: 400 })
+    }
+
+    // Validate file is not empty
+    if (file.size === 0) {
+      return NextResponse.json({ error: "Empty file" }, { status: 400 })
     }
 
     // Read and parse CSV
@@ -82,14 +120,26 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Validate column count
-    const columns = Object.keys(records[0])
-    if (columns.length > MAX_COLUMNS) {
+    // Sanitize column names early to prevent SQL injection
+    const originalColumns = Object.keys(records[0])
+    if (originalColumns.length > MAX_COLUMNS) {
       return NextResponse.json(
-        { error: `Too many columns. Maximum ${MAX_COLUMNS} columns allowed, found ${columns.length}` },
+        { error: `Too many columns. Maximum ${MAX_COLUMNS} columns allowed, found ${originalColumns.length}` },
         { status: 400 },
       )
     }
+
+    // Remap records with sanitized column names
+    const sanitizedRecords = records.map((record) => {
+      const sanitizedRecord: any = {}
+      for (const col of originalColumns) {
+        const sanitizedCol = sanitizeColumnName(col)
+        sanitizedRecord[sanitizedCol] = record[col]
+      }
+      return sanitizedRecord
+    })
+
+    const columns = Object.keys(sanitizedRecords[0])
 
     const supabase = await createClient()
 
@@ -114,7 +164,7 @@ export async function POST(req: NextRequest) {
         file_name: file.name,
         user_context: context || null,
         table_name: tableName,
-        row_count: records.length,
+        row_count: sanitizedRecords.length,
         column_count: columns.length,
         user_id: user.id,
       })
@@ -126,9 +176,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Failed to create dataset" }, { status: 500 })
     }
 
-    // Infer column types from first 100 rows
-    const sampleSize = Math.min(100, records.length)
-    const columnTypes = inferColumnTypes(records.slice(0, sampleSize))
+    // Infer column types from first 100 rows (using sanitized records)
+    const sampleSize = Math.min(100, sanitizedRecords.length)
+    const columnTypes = inferColumnTypes(sanitizedRecords.slice(0, sampleSize))
 
     const pool = getPostgresPool()
     const createTableSQL = generateCreateTableSQL(tableName, columnTypes)
@@ -146,7 +196,7 @@ export async function POST(req: NextRequest) {
 
       try {
         // Insert data using optimized batch inserts with dynamic sizing
-        const columnNames = Object.keys(records[0])
+        const columnNames = Object.keys(sanitizedRecords[0])
 
         // Calculate safe batch size to avoid PostgreSQL parameter limit (65535)
         // Formula: batch_size = floor(60000 / column_count) for safety margin
@@ -154,12 +204,12 @@ export async function POST(req: NextRequest) {
         const batchSize = Math.min(dynamicBatchSize, 1000) // Cap at 1000 for reasonable query size
 
         console.log(
-          `Inserting ${records.length} rows in batches of ${batchSize} (${columnNames.length} columns)`,
+          `Inserting ${sanitizedRecords.length} rows in batches of ${batchSize} (${columnNames.length} columns)`,
         )
 
         // Insert in batches
-        for (let i = 0; i < records.length; i += batchSize) {
-          const batch = records.slice(i, i + batchSize)
+        for (let i = 0; i < sanitizedRecords.length; i += batchSize) {
+          const batch = sanitizedRecords.slice(i, i + batchSize)
 
           // Build parameterized INSERT query
           const placeholders = batch
@@ -175,11 +225,11 @@ export async function POST(req: NextRequest) {
           await client.query(insertSQL, values)
 
           const batchNumber = Math.floor(i / batchSize) + 1
-          const totalBatches = Math.ceil(records.length / batchSize)
+          const totalBatches = Math.ceil(sanitizedRecords.length / batchSize)
           console.log(`Inserted batch ${batchNumber}/${totalBatches} (${batch.length} rows)`)
         }
 
-        console.log(`Successfully inserted all ${records.length} rows`)
+        console.log(`Successfully inserted all ${sanitizedRecords.length} rows`)
 
         // Commit transaction
         await client.query("COMMIT")
@@ -221,7 +271,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       datasetId: dataset.id,
       fileName: file.name,
-      rowCount: records.length,
+      rowCount: sanitizedRecords.length,
       columnCount: columns.length,
     })
   } catch (error) {

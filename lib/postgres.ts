@@ -11,6 +11,11 @@ export function getPostgresPool() {
     throw new Error("Postgres connection string not found")
   }
 
-  pool = new Pool({ connectionString })
+  pool = new Pool({
+    connectionString,
+    max: 20, // Maximum pool size
+    idleTimeoutMillis: 30000, // Close idle connections after 30s
+    connectionTimeoutMillis: 10000, // Fail fast on connection issues
+  })
   return pool
 }

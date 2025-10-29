@@ -54,10 +54,34 @@ const FORBIDDEN_KEYWORDS = [
   "EXECUTE",
 ]
 
-export function validateReadOnlySQL(sql: string): { valid: boolean; error?: string } {
-  const upperSQL = sql.toUpperCase().trim()
+// Forbidden patterns using regex for more precise detection
+const FORBIDDEN_PATTERNS = [
+  /\b(INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|TRUNCATE|GRANT|REVOKE|EXEC|EXECUTE)\b/i,
+  /--/, // SQL line comments
+  /\/\*/, // SQL multi-line comments start
+  /;\s*(SELECT|WITH|INSERT|UPDATE|DELETE|DROP)/i, // Stacked queries
+  /UNION\s+SELECT/i, // UNION-based injection
+  /INTO\s+(OUTFILE|DUMPFILE)/i, // File operations
+  /LOAD_FILE/i, // File reading
+  /xp_cmdshell/i, // SQL Server command execution
+  /pg_sleep/i, // Time-based attacks
+]
 
-  // Check for forbidden keywords
+export function validateReadOnlySQL(sql: string): { valid: boolean; error?: string } {
+  const trimmedSQL = sql.trim()
+  const upperSQL = trimmedSQL.toUpperCase()
+
+  // Check for forbidden patterns using regex
+  for (const pattern of FORBIDDEN_PATTERNS) {
+    if (pattern.test(trimmedSQL)) {
+      return {
+        valid: false,
+        error: `Forbidden SQL pattern detected. Only SELECT queries are allowed.`,
+      }
+    }
+  }
+
+  // Check for forbidden keywords (kept for backward compatibility)
   for (const keyword of FORBIDDEN_KEYWORDS) {
     if (upperSQL.includes(keyword)) {
       return {
@@ -110,11 +134,35 @@ export function sanitizeTableName(datasetId: string): string {
   return `ds_${datasetId.replace(/-/g, "_")}`
 }
 
+export function assessQueryComplexity(sql: string): { allowed: boolean; reason?: string } {
+  const upperSQL = sql.toUpperCase()
+
+  // Count JOINs
+  const joinCount = (upperSQL.match(/\bJOIN\b/g) || []).length
+  if (joinCount > 3) {
+    return { allowed: false, reason: "Too many JOINs (max 3)" }
+  }
+
+  // Check for nested subqueries
+  const selectCount = (upperSQL.match(/\bSELECT\b/g) || []).length
+  if (selectCount > 3) {
+    return { allowed: false, reason: "Too many nested subqueries (max 2 nested)" }
+  }
+
+  return { allowed: true }
+}
+
 export function guardSQL(sql: string, tableName: string, maxLimit = 500): string {
   // Validate SQL is read-only
   const validation = validateReadOnlySQL(sql)
   if (!validation.valid) {
     throw new Error(validation.error)
+  }
+
+  // Check query complexity
+  const complexity = assessQueryComplexity(sql)
+  if (!complexity.allowed) {
+    throw new Error(complexity.reason)
   }
 
   // Ensure LIMIT is applied

@@ -467,25 +467,33 @@ Analyze subscription trends by month and day. Identify optimal contact timing pa
 
 ### CSV Ingestion Pipeline
 
-The application uses an optimized batch ingestion system with enterprise-grade reliability:
+The application uses an optimized batch ingestion system with enterprise-grade reliability and security:
 
-1. **File Validation**:
+1. **File Validation & Security**:
+   - MIME type validation (text/csv, text/plain only)
+   - File extension validation (.csv only)
    - Size limit: 20MB maximum
+   - Empty file rejection
    - Column limit: 200 columns maximum
    - Multi-delimiter support: comma, semicolon, tab
 
-2. **Type Inference**:
+2. **Column Name Sanitization**:
+   - Strips special characters to prevent SQL injection
+   - Limits to 63 characters (PostgreSQL column name limit)
+   - Replaces unsafe characters with underscores
+
+3. **Type Inference**:
    - Samples first 100 rows to infer column types
    - Supports: INTEGER, DOUBLE PRECISION, BOOLEAN, TIMESTAMPTZ, TEXT
    - Smart type detection with fallback to TEXT
 
-3. **Dynamic Batch Insertion**:
+4. **Dynamic Batch Insertion**:
    - **Parameter limit safety**: Calculates batch size as `floor(60000 / column_count)` to prevent PostgreSQL's 65,535 parameter limit
    - **Transaction wrapping**: All inserts wrapped in BEGIN/COMMIT for ACID compliance
    - **Automatic rollback**: On any error, rolls back all changes and cleans up metadata
    - **Progress logging**: Detailed batch-by-batch progress (e.g., "Inserted batch 5/12")
 
-4. **Error Handling**:
+5. **Error Handling**:
    - Failed inserts trigger automatic rollback
    - Orphaned dataset records are cleaned up
    - Detailed error messages returned to client
@@ -553,16 +561,57 @@ The AI agent follows these PostgreSQL-specific patterns to avoid common errors:
 - `ds_<datasetId>`: Dynamic tables for each uploaded dataset
 
 ### Security
+
+The application implements multiple layers of security to protect against common vulnerabilities:
+
+#### Authentication & Authorization
 - **Anonymous Authentication**: Automatic session-based user isolation with Row Level Security (RLS)
-  - Each browser session is isolated - users can only see their own datasets
+  - Each browser session gets a unique anonymous user ID
+  - Users can only see their own datasets - complete session isolation
   - No login required - seamless user experience
-  - See [RLS_IMPLEMENTATION.md](./RLS_IMPLEMENTATION.md) for implementation details and troubleshooting
-- **SQL Safety**: SELECT-only queries with automatic LIMIT (≤1500 for analysis, up to 10K for visualizations with automatic aggregation for boxplots on larger datasets), no semicolons allowed
-- **Error Recovery**: Helpful error messages with fix suggestions (e.g., lists available columns on column-not-found errors)
-- **Timeout Protection**:
-  - Route timeout: 300 seconds (5 minutes, entire analysis session)
-  - Individual query timeouts: 30s (normal mode), 60s (deep dive mode)
-- **Input Validation**: CSV size and column limits enforced
+  - Sessions persist across page refreshes
+  - Automatic session refresh prevents unexpected expiration
+  - See [RLS_IMPLEMENTATION.md](./RLS_IMPLEMENTATION.md) for implementation details
+
+#### SQL Injection Prevention
+- **Table Name Validation**: Only allows `ds_<uuid_with_underscores>` format for dynamic tables (e.g., `ds_550e8400_e29b_41d4_a716_446655440000`)
+- **Column Name Sanitization**: Strips special characters from CSV column names
+- **Parameterized Queries**: All database queries use parameterized statements
+- **SQL Guard with Pattern Detection**:
+  - SELECT-only queries enforced
+  - Blocks SQL comments (`--`, `/* */`)
+  - Blocks UNION-based injection attacks
+  - Blocks stacked queries
+  - Blocks file operations (LOAD_FILE, INTO OUTFILE)
+  - Query complexity limits: max 3 JOINs, max 2 nested subqueries
+  - Automatic LIMIT enforcement (≤1500 for analysis, up to 10K for visualizations)
+
+#### Input Validation
+- **File Upload Security**:
+  - MIME type validation (text/csv, text/plain)
+  - File extension validation (.csv only)
+  - Size limit: 20MB maximum
+  - Empty file rejection
+  - Column limit: 200 columns maximum
+
+#### Infrastructure Security
+- **HTTP Security Headers** (via next.config.mjs):
+  - Content-Security-Policy (CSP) with Supabase/OpenAI whitelisting
+  - X-Frame-Options: DENY (prevents clickjacking)
+  - X-Content-Type-Options: nosniff (prevents MIME sniffing)
+  - X-XSS-Protection: enabled
+  - Referrer-Policy: strict-origin-when-cross-origin
+  - Permissions-Policy (restricts camera, microphone, geolocation)
+- **Connection Pool Limits**: Max 20 connections, 30s idle timeout, 10s connection timeout
+- **Defense in Depth**: Explicit ownership verification on all data access routes
+
+#### Error Handling
+- **Helpful Error Messages**: Lists available columns on errors (for user convenience)
+- **No Information Disclosure**: Generic error messages in production mode
+
+#### Timeout Protection
+- Route timeout: 300 seconds (5 minutes for entire analysis session)
+- Individual query timeouts: 30s (normal mode), 60s (deep dive mode)
 
 ## Project Structure
 
