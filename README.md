@@ -94,7 +94,8 @@ The AI agent uses a minimal 2-tool system with reference-based data flow:
    - Executes SQL against dataset table
    - Stores full results in `runs.sample` (JSONB column)
    - Spawns GPT-4o-mini sub-agent to analyze full results (up to 100 rows)
-   - Returns: `{ queryId, rowCount, preview, analysis, reasoning }`
+   - Returns: `{ queryId, rowCount, columns, preview, analysis, reasoning }`
+   - Columns: Array of field names from query results (use these exact names in createChart - may differ from original table due to aliases/calculated fields)
    - Preview: First 5 rows only (token-efficient)
    - Analysis: 2-3 sentence summary from sub-agent covering patterns, outliers, and suggested next dimensions
    - QueryId: Reference for fetching full data later
@@ -116,11 +117,14 @@ The AI agent uses a minimal 2-tool system with reference-based data flow:
      • Large scatter/line datasets: Aggregate via SQL (binning, downsampling, coarser time granularity)
      • Boxplots: Automatically handled via server-side statistical aggregation
      • Heatmaps: Use aggregated data (GROUP BY x, y). Limit to ≤30 categories per dimension for readability
+   - **Field Validation**: createChart validates that xField, yField, and colorField exist in the query results. If a field name doesn't match, the system uses fuzzy matching (Levenshtein distance) to suggest the closest available column name with "Did you mean...?" suggestions for typos.
 
 **Reference-Based Pattern**: Instead of passing large datasets through AI context, executeSQLQuery stores data (1,500 rows) in DB and returns a small preview + queryId + original SQL. When visualization is needed, createChart re-executes the SQL intelligently:
 - For datasets ≤chart limit: Fetches full data (1.5K-10K rows depending on chart type)
 - For boxplots >10K rows: Automatically uses SQL aggregates (PERCENTILE_CONT) for accurate distribution statistics
 - For other charts exceeding limits: Returns error with guidance to aggregate data in SQL
+
+**Sequential Execution Required**: createChart must be called AFTER executeSQLQuery completes successfully. Never call both tools in parallel - the queryId must be obtained from executeSQLQuery's response before calling createChart.
 
 This dramatically reduces token usage while maintaining accurate visualizations for any dataset size.
 

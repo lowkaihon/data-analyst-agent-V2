@@ -11,6 +11,76 @@ export const maxDuration = 300
 const QUERY_TIMEOUT_NORMAL_MS = 30000 // 30 seconds
 const QUERY_TIMEOUT_DEEP_DIVE_MS = 60000 // 60 seconds
 
+// Helper function: Calculate Levenshtein distance for fuzzy matching
+function levenshteinDistance(str1: string, str2: string): number {
+  const m = str1.length
+  const n = str2.length
+  const dp: number[][] = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0))
+
+  for (let i = 0; i <= m; i++) dp[i][0] = i
+  for (let j = 0; j <= n; j++) dp[0][j] = j
+
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (str1[i - 1] === str2[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1]
+      } else {
+        dp[i][j] = Math.min(
+          dp[i - 1][j] + 1,     // deletion
+          dp[i][j - 1] + 1,     // insertion
+          dp[i - 1][j - 1] + 1  // substitution
+        )
+      }
+    }
+  }
+
+  return dp[m][n]
+}
+
+// Helper function: Validate chart fields and provide suggestions
+function validateChartFields(
+  fields: { xField: string; yField: string; colorField?: string },
+  availableColumns: string[]
+): { valid: boolean; errors: string[]; suggestions: Record<string, string> } {
+  const errors: string[] = []
+  const suggestions: Record<string, string> = {}
+
+  const fieldsToCheck = [
+    { name: 'xField', value: fields.xField },
+    { name: 'yField', value: fields.yField },
+    ...(fields.colorField ? [{ name: 'colorField', value: fields.colorField }] : [])
+  ]
+
+  for (const field of fieldsToCheck) {
+    if (!availableColumns.includes(field.value)) {
+      // Find closest match using Levenshtein distance
+      let closestMatch = availableColumns[0]
+      let minDistance = levenshteinDistance(field.value.toLowerCase(), closestMatch.toLowerCase())
+
+      for (const col of availableColumns) {
+        const distance = levenshteinDistance(field.value.toLowerCase(), col.toLowerCase())
+        if (distance < minDistance) {
+          minDistance = distance
+          closestMatch = col
+        }
+      }
+
+      errors.push(`Field '${field.value}' not found in query results`)
+
+      // Only suggest if it's reasonably close (distance < 40% of field length)
+      if (minDistance <= Math.ceil(field.value.length * 0.4)) {
+        suggestions[field.name] = closestMatch
+      }
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    suggestions
+  }
+}
+
 export async function POST(req: Request, { params }: { params: Promise<{ datasetId: string }> }) {
   try {
     console.log("Chat API route called")
@@ -157,7 +227,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
 
     const tools = {
       executeSQLQuery: tool({
-        description: `Execute a SELECT query to explore data. Returns preview (5 rows), AI analysis of full results, and queryId for visualization.`,
+        description: `Execute a SELECT query to explore data. Returns queryId for visualization, columns array (exact field names from query results - use these for createChart), preview (5 rows), and AI analysis of full results. IMPORTANT: Column names in results may differ from original table schema due to aliases or calculated fields.`,
         inputSchema: z.object({
           query: z.string().describe("SELECT query ending with LIMIT clause (max 1500). Example: 'SELECT x FROM t GROUP BY x LIMIT 100'. Never include trailing semicolons."),
           reasoning: z.string().describe("What insight this query reveals (1 sentence)"),
@@ -262,6 +332,7 @@ Format your response with:
               success: true,
               queryId: queryId, // ID to reference this query's data
               rowCount: result.rowCount,
+              columns: result.fields.map((f: any) => f.name), // Column names from query results
               preview: preview, // Small preview for AI to examine
               analysis: analysis, // NEW: Full-dataset insights from sub-agent
               reasoning,
@@ -295,9 +366,9 @@ Format your response with:
       }),
 
       createChart: tool({
-        description: `Create Vega-Lite chart from query results. Automatically fetches optimal data amount based on chart type. Use queryId from executeSQLQuery.`,
+        description: `Create Vega-Lite chart from COMPLETED query results. REQUIRES a valid queryId returned by executeSQLQuery. IMPORTANT: executeSQLQuery must complete successfully before calling this tool. Never call both tools in parallel - always wait for executeSQLQuery to return a queryId first. Automatically fetches optimal data amount based on chart type.`,
         inputSchema: z.object({
-          queryId: z.string().describe("QueryId from executeSQLQuery"),
+          queryId: z.string().describe("QueryId returned by a COMPLETED executeSQLQuery call. Must be a valid UUID from a successful query execution. Never use placeholders."),
           chartType: z.enum(["bar", "line", "scatter", "area", "pie", "boxplot", "heatmap"]).describe("bar: categorical x + quantitative y (comparisons), line: temporal/ordered x + quantitative y (trends), scatter: quantitative x + quantitative y (correlations), area: temporal x + quantitative y (cumulative), pie: categorical (3-7 categories), boxplot: categorical x + quantitative y (distributions) - REQUIRES raw unaggregated data with 3+ points per category; for pre-aggregated data (AVG/SUM/COUNT) use bar chart, heatmap: categorical x + categorical y + quantitative z (2D patterns) - REQUIRES aggregated data (one row per x,y combination via GROUP BY x, y)"),
           xField: z.string().describe("Column for x-axis (must exist in query results)"),
           yField: z.string().describe("Column for y-axis (must exist in query results)"),
@@ -328,6 +399,57 @@ Format your response with:
 
           const sqlQuery = runData.sql as string
           const columns = runData.columns as string[]
+
+          // Validate that specified fields exist in query results
+          const validation = validateChartFields(
+            { xField, yField, colorField },
+            columns
+          )
+
+          if (!validation.valid) {
+            const errorMsg = validation.errors.join('. ')
+            const availableList = `Available columns: ${columns.join(', ')}`
+
+            // Build suggestion message if we have any
+            const suggestionParts = Object.entries(validation.suggestions).map(
+              ([fieldName, suggestion]) => `${fieldName}='${suggestion}'`
+            )
+            const suggestionMsg = suggestionParts.length > 0
+              ? ` Did you mean: ${suggestionParts.join(', ')}?`
+              : ''
+
+            console.error("Field validation failed:", errorMsg)
+            return {
+              success: false,
+              error: `${errorMsg}. ${availableList}.${suggestionMsg}`,
+            }
+          }
+
+          // Chart-type-specific validation
+          const sqlUpper = sqlQuery.toUpperCase()
+
+          if (chartType === "boxplot") {
+            // Check if query contains aggregation (which would make boxplot invalid)
+            const hasAggregation = /\b(AVG|SUM|COUNT|MIN|MAX)\s*\(/i.test(sqlQuery)
+            const hasGroupBy = /\bGROUP\s+BY\b/i.test(sqlUpper)
+
+            if (hasAggregation || hasGroupBy) {
+              return {
+                success: false,
+                error: `Boxplot requires raw, unaggregated data but your query contains ${hasAggregation ? 'aggregation functions (AVG/SUM/COUNT)' : 'GROUP BY'}. For aggregated data showing ${yField} by ${xField}, use chartType='bar' instead.`,
+              }
+            }
+          }
+
+          if (chartType === "heatmap") {
+            // Heatmap requires a value field for color encoding
+            if (!colorField) {
+              return {
+                success: false,
+                error: `Heatmap requires a colorField parameter to specify the quantitative value for color encoding. This should be a numeric column from your aggregated data (e.g., COUNT(*), AVG(...), SUM(...)). Available columns: ${columns.join(', ')}.`,
+              }
+            }
+          }
 
           // Determine chart-type-specific limit for optimal visualization
           const chartLimit = chartType === "boxplot" ? 10000
@@ -876,8 +998,11 @@ Format your response with:
             const valueField = colorField || yField
 
             // Check if we have numeric values for the heatmap cells
+            // Note: PostgreSQL NUMERIC/DECIMAL types may return as strings to preserve precision
             const sampleValue = data[0]?.[valueField]
-            if (typeof sampleValue !== "number") {
+            const numericValue = typeof sampleValue === 'string' ? parseFloat(sampleValue) : sampleValue
+
+            if (typeof numericValue !== "number" || isNaN(numericValue)) {
               return {
                 success: false,
                 error: `Heatmap requires a quantitative value field for color encoding. The field '${valueField}' does not contain numeric values. Please ensure your query includes a numeric aggregation (e.g., COUNT(*), AVG(...), SUM(...)) and specify it via colorField parameter.`
@@ -939,14 +1064,14 @@ Format your response with:
                   // Can also use "viridis", "magma", "inferno" for better perceptual uniformity
                 },
                 legend: {
-                  title: colorField ? (yAxisLabel || valueField) : (yAxisLabel || yField),
+                  title: valueField,
                   orient: "right",
                 },
               },
               tooltip: [
                 { field: xField, type: "nominal", title: xAxisLabel || xField },
                 { field: yField, type: "nominal", title: yAxisLabel || yField },
-                { field: valueField, type: "quantitative", title: colorField ? valueField : (yAxisLabel || yField), format: tooltipFormat },
+                { field: valueField, type: "quantitative", title: valueField, format: tooltipFormat },
               ],
             }
           }
@@ -998,11 +1123,10 @@ Step budget: 30 steps available. Keep exploring until you've covered:
 - Cross-tabulations: When single dimensions show large variance within categories, multiple strong predictors, or surprising outliers → test interactions between them
 - Interaction validation: Test if high-performing patterns are driven by feature combinations
 - Validation queries (test surprising findings)
-- 5-7 visualizations for major patterns
 
 This depth typically requires 20-30 steps.
 
-One step may include parallel tool calls (e.g., executeSQLQuery + createChart simultaneously).
+Important: executeSQLQuery and createChart must be called sequentially. Always call executeSQLQuery first, wait for the queryId in the response, then call createChart with that queryId in a subsequent step.
 
 IMPORTANT: You are starting fresh with this deep-dive analysis. Previous chat history is not available. Focus on the dataset and user's stated objectives.
 </task>
@@ -1016,7 +1140,13 @@ Triggers for cross-tabulations:
 - Surprising outliers or anomalies → validate with cross-tabulations
 - High-performing segment found → confirm it's not driven by confounding feature
 
-Continue until major patterns are validated through interactions. Create 5-7 visualizations for key findings.
+Create visualizations for key findings:
+- Each strong predictor (distribution or comparison chart)
+- Important cross-tabulations (grouped/colored charts)
+- Surprising outliers or anomalies (highlight with scatter/boxplot)
+- Temporal trends if time dimension exists
+
+Continue until major patterns are validated through interactions and visualized.
 </exploration_approach>
 
 <tools>
@@ -1069,7 +1199,7 @@ Standout Segments:
 Limitations & Data Quality:
 [Numbered list of caveats and data issues]
 
-Create 5-7 charts for major patterns. Use plain text with numbered lists. No markdown formatting.
+Use plain text with numbered lists. No markdown formatting.
 STOP after detailed analysis - do not add recommendations or other sections.
 </output_format>`
 
@@ -1124,6 +1254,8 @@ When user message contains only schema information (column names, types, row cou
 3. Create visualizations if data is visual (5+ rows, clear patterns)
 4. State direct answer with supporting evidence
 5. STOP - await next user question
+
+Note: createChart requires a queryId from a completed executeSQLQuery call. These tools must be executed sequentially, never in parallel.
 
 ## Query Scope Policy
 - **Single-part questions**: Use one query unless technically impossible
