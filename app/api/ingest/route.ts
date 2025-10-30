@@ -65,7 +65,21 @@ function sanitizeCSVValue(value: any): any {
 
 export async function POST(req: NextRequest) {
   try {
-    const formData = await req.formData()
+    // Parse form data with explicit error handling
+    let formData: FormData
+    try {
+      formData = await req.formData()
+    } catch (formError) {
+      console.error("Form data parsing error:", formError)
+      return NextResponse.json(
+        {
+          error: "Failed to parse request body",
+          details: formError instanceof Error ? formError.message : "Invalid request format",
+        },
+        { status: 400 },
+      )
+    }
+
     const file = formData.get("file") as File
     const context = formData.get("context") as string
 
@@ -257,7 +271,38 @@ export async function POST(req: NextRequest) {
 
     if (datasetError) {
       console.error("Dataset creation error:", datasetError)
-      return NextResponse.json({ error: "Failed to create dataset" }, { status: 500 })
+
+      // Check for schema-related errors (missing columns, RLS issues)
+      const errorMessage = datasetError.message || ""
+      if (errorMessage.includes("column") && errorMessage.includes("does not exist")) {
+        return NextResponse.json(
+          {
+            error: "Database schema mismatch. Please run database migration scripts.",
+            details: "The database schema is outdated. Run scripts/reset_database.sql followed by scripts/initialize_database.sql",
+            technicalError: errorMessage,
+          },
+          { status: 500 },
+        )
+      }
+
+      if (errorMessage.includes("permission denied") || errorMessage.includes("policy")) {
+        return NextResponse.json(
+          {
+            error: "Database permission error. Please check RLS policies.",
+            details: "Row Level Security policies may not be configured correctly.",
+            technicalError: errorMessage,
+          },
+          { status: 500 },
+        )
+      }
+
+      return NextResponse.json(
+        {
+          error: "Failed to create dataset",
+          details: errorMessage || "Unknown database error",
+        },
+        { status: 500 },
+      )
     }
 
     // Infer column types from first 100 rows (using sanitized records)

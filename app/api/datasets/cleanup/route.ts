@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/server"
 import { sanitizeTableName } from "@/lib/sql-guard"
 import { getPostgresPool } from "@/lib/postgres"
 
@@ -25,20 +25,22 @@ export async function POST(req: NextRequest) {
     //   return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     // }
 
-    const supabase = await createClient()
+    // Use admin client to bypass RLS and delete all old datasets (not just user-owned)
+    const supabase = await createAdminClient()
 
     // Get authenticated user (optional for CRON jobs)
     const {
       data: { user },
     } = await supabase.auth.getUser()
 
-    // Note: CRON jobs may not have user authentication
-    // If no user, we'll use admin operations for cleanup
+    // Note: CRON jobs run without user authentication
+    // Using admin client bypasses RLS to allow cleanup of all old datasets
     if (!user) {
       console.log("Cleanup running without user authentication (likely CRON job)")
     }
 
-    // Find datasets older than 24 hours - RLS will automatically filter by user_id
+    // Find datasets older than 24 hours
+    // Admin client bypasses RLS, so this will find ALL old datasets regardless of user_id
     const cutoffTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 
     const { data: oldDatasets, error: fetchError } = await supabase

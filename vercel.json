@@ -5,5 +5,11 @@
       "path": "/api/datasets/cleanup",
       "schedule": "0 2 * * *"
     }
-  ]
+  ],
+  "functions": {
+    "app/api/ingest/route.ts": {
+      "maxDuration": 60,
+      "memory": 1024
+    }
+  }
 }
