@@ -16,7 +16,7 @@
       "memory": 1024
     },
     "app/api/report/generate/route.ts": {
-      "maxDuration": 90,
+      "maxDuration": 600,
       "memory": 1024
     },
     "app/api/datasets/cleanup/route.ts": {
