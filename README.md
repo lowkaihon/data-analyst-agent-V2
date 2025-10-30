@@ -2,8 +2,7 @@
 
 An AI-powered data analysis platform that enables interactive exploration of CSV datasets through natural conversation. Upload your data, ask questions, and let the AI autonomously run SQL queries, generate visualizations, and produce comprehensive reports.
 
-[![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com/kaihon333haha-5908s-projects/v0-data-analyst-agent)
-[![Built with v0](https://img.shields.io/badge/Built%20with-v0.app-black?style=for-the-badge)](https://v0.app/chat/projects/WdUJaFsY9r0)
+[![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://lowkaihon-data-analyst-agent.vercel.app/)
 
 Scaffolded with Vercel v0; productionized with Next.js 16 + Supabase/Postgres. Used AI pair-programming (Claude Code) to accelerate refactors.
 
@@ -827,7 +826,7 @@ Note: Manual testing bypasses the Vercel Cron user-agent check in development mo
 
 ### Live Demo
 
-**Production URL**: [https://vercel.com/kaihon333haha-5908s-projects/v0-data-analyst-agent](https://vercel.com/kaihon333haha-5908s-projects/v0-data-analyst-agent)
+**Production URL**: [https://lowkaihon-data-analyst-agent.vercel.app/](https://lowkaihon-data-analyst-agent.vercel.app/)
 
 
 ## Contributing
