@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { getPostgresPool } from "@/lib/postgres"
 import { sanitizeTableName } from "@/lib/sql-guard"
 import { parse } from "csv-parse/sync"
@@ -64,24 +64,68 @@ function sanitizeCSVValue(value: any): any {
 }
 
 export async function POST(req: NextRequest) {
-  try {
-    // Parse form data with explicit error handling
-    let formData: FormData
-    try {
-      formData = await req.formData()
-    } catch (formError) {
-      console.error("Form data parsing error:", formError)
-      return NextResponse.json(
-        {
-          error: "Failed to parse request body",
-          details: formError instanceof Error ? formError.message : "Invalid request format",
-        },
-        { status: 400 },
-      )
-    }
+  // Declare storagePath outside try block so it's accessible in catch for cleanup
+  let storagePath: string | null = null
 
-    const file = formData.get("file") as File
-    const context = formData.get("context") as string
+  try {
+    // Check if this is a storage upload (JSON body) or direct upload (FormData)
+    const contentType = req.headers.get("content-type") || ""
+    const isStorageUpload = contentType.includes("application/json")
+
+    let file: File | null = null
+    let context: string | null = null
+    let fileName: string = ""
+
+    if (isStorageUpload) {
+      // Storage upload: Download file from Supabase Storage
+      const body = await req.json()
+      storagePath = body.storagePath
+      context = body.context || null
+      fileName = body.fileName || "upload.csv"
+
+      if (!storagePath || typeof storagePath !== "string") {
+        return NextResponse.json({ error: "storagePath is required for storage uploads" }, { status: 400 })
+      }
+
+      // Download file from storage using admin client (bypasses RLS)
+      const adminClient = await createAdminClient()
+      const { data: fileData, error: downloadError } = await adminClient.storage
+        .from("csv-uploads")
+        .download(storagePath)
+
+      if (downloadError || !fileData) {
+        console.error("Storage download error:", downloadError)
+        return NextResponse.json(
+          {
+            error: "Failed to download file from storage",
+            details: downloadError?.message || "File not found",
+          },
+          { status: 500 },
+        )
+      }
+
+      // Convert Blob to File object
+      file = new File([fileData], fileName, { type: "text/csv" })
+    } else {
+      // Direct upload: Parse form data
+      let formData: FormData
+      try {
+        formData = await req.formData()
+      } catch (formError) {
+        console.error("Form data parsing error:", formError)
+        return NextResponse.json(
+          {
+            error: "Failed to parse request body",
+            details: formError instanceof Error ? formError.message : "Invalid request format",
+          },
+          { status: 400 },
+        )
+      }
+
+      file = formData.get("file") as File
+      context = formData.get("context") as string
+      fileName = file?.name || "upload.csv"
+    }
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 })
@@ -397,14 +441,45 @@ export async function POST(req: NextRequest) {
       client.release()
     }
 
+    // Cleanup: Delete temporary file from storage (if it was a storage upload)
+    if (storagePath) {
+      try {
+        const adminClient = await createAdminClient()
+        const { error: deleteError } = await adminClient.storage.from("csv-uploads").remove([storagePath])
+        if (deleteError) {
+          console.error("Failed to delete storage file:", deleteError)
+          // Don't fail the request if cleanup fails
+        } else {
+          console.log("Deleted temporary storage file:", storagePath)
+        }
+      } catch (cleanupError) {
+        console.error("Storage cleanup error:", cleanupError)
+        // Don't fail the request if cleanup fails
+      }
+    }
+
     return NextResponse.json({
       datasetId: dataset.id,
-      fileName: file.name,
+      fileName: fileName,
       rowCount: sanitizedRecords.length,
       columnCount: columns.length,
     })
   } catch (error) {
     console.error("Ingest error:", error)
+
+    // Cleanup: Delete temporary file from storage (if it was a storage upload)
+    if (storagePath) {
+      try {
+        const adminClient = await createAdminClient()
+        const { error: deleteError } = await adminClient.storage.from("csv-uploads").remove([storagePath])
+        if (!deleteError) {
+          console.log("Deleted temporary storage file after error:", storagePath)
+        }
+      } catch (cleanupError) {
+        console.error("Storage cleanup error:", cleanupError)
+      }
+    }
+
     return NextResponse.json({ error: "Failed to process file" }, { status: 500 })
   }
 }

@@ -76,23 +76,81 @@ export default function UploadPage() {
     setError(null)
 
     try {
-      const formData = new FormData()
-      formData.append("file", file)
-      formData.append("context", context)
+      const STORAGE_UPLOAD_THRESHOLD = 4 * 1024 * 1024 // 4 MB
+      const useStorageUpload = file.size >= STORAGE_UPLOAD_THRESHOLD
 
-      const response = await fetch("/api/ingest", {
-        method: "POST",
-        body: formData,
-      })
+      if (useStorageUpload) {
+        // For large files (>=4 MB): Upload via Supabase Storage to bypass Vercel's 4.5 MB limit
+        console.log("Using storage upload for large file:", (file.size / 1024 / 1024).toFixed(2), "MB")
 
-      const data = await response.json()
+        // Step 1: Get pre-signed upload URL
+        const urlResponse = await fetch("/api/storage/upload-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fileName: file.name }),
+        })
 
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to upload file")
+        const urlData = await urlResponse.json()
+
+        if (!urlResponse.ok) {
+          throw new Error(urlData.error || "Failed to get upload URL")
+        }
+
+        // Step 2: Upload file directly to Supabase Storage
+        const uploadResponse = await fetch(urlData.uploadUrl, {
+          method: "PUT",
+          body: file,
+          headers: {
+            "Content-Type": "text/csv",
+            "x-upsert": "true",
+          },
+        })
+
+        if (!uploadResponse.ok) {
+          throw new Error("Failed to upload file to storage")
+        }
+
+        // Step 3: Call ingest API with storage path
+        const ingestResponse = await fetch("/api/ingest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            storagePath: urlData.storagePath,
+            context: context,
+            fileName: file.name,
+          }),
+        })
+
+        const ingestData = await ingestResponse.json()
+
+        if (!ingestResponse.ok) {
+          throw new Error(ingestData.error || "Failed to process file")
+        }
+
+        // Redirect to analysis page
+        router.push(`/analyze?datasetId=${ingestData.datasetId}`)
+      } else {
+        // For small files (<4 MB): Use direct upload (faster, no storage involved)
+        console.log("Using direct upload for small file:", (file.size / 1024 / 1024).toFixed(2), "MB")
+
+        const formData = new FormData()
+        formData.append("file", file)
+        formData.append("context", context)
+
+        const response = await fetch("/api/ingest", {
+          method: "POST",
+          body: formData,
+        })
+
+        const data = await response.json()
+
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to upload file")
+        }
+
+        // Redirect to analysis page
+        router.push(`/analyze?datasetId=${data.datasetId}`)
       }
-
-      // Redirect to analysis page
-      router.push(`/analyze?datasetId=${data.datasetId}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred")
     } finally {

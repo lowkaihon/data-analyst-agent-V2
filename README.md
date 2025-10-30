@@ -97,6 +97,12 @@ Generate comprehensive business intelligence reports powered by GPT-5 using data
   - Used for DDL operations (CREATE TABLE)
   - Optimized batch inserts with dynamic sizing
   - Transaction-wrapped ingestion for ACID compliance
+- **Supabase Storage** for large file uploads:
+  - Direct client upload for CSV files ≥4 MB (bypasses Vercel's 4.5 MB limit)
+  - Pre-signed upload URLs with 5-minute expiration
+  - Automatic temp file cleanup after processing
+  - Files < 4 MB use direct upload (faster, no storage cost)
+  - Supports up to 50 MB on free tier, 5 GB on Pro tier
 - **OpenAI AI Models**: See [Technical Specifications](#technical-specifications) for model assignments, step counts, and query depths
 - **Node.js Runtime** for API routes with SQL operations
 
@@ -452,12 +458,24 @@ Analyze subscription trends by month and day. Identify optimal contact timing pa
 
    > **Note**: The database schema includes `table_name`, `column_count`, and `user_context` fields. If you ran an older schema version, you must reset your database using the scripts above.
 
-5. **Run the development server:**
+5. **Set up Supabase Storage bucket:**
+
+   **Required for production deployments** to support CSV files larger than 4 MB.
+
+   1. Go to Supabase Dashboard → Storage
+   2. Create bucket named `csv-uploads` (keep it private)
+   3. Configure RLS policies using SQL Editor
+
+   **Detailed instructions**: See [`STORAGE_SETUP.md`](./STORAGE_SETUP.md) for complete setup guide including RLS policies.
+
+   > **Note**: Files < 4 MB use direct upload and don't require storage. The storage bucket is only needed for larger files.
+
+6. **Run the development server:**
    ```bash
    pnpm dev
    ```
 
-6. **Open your browser:**
+7. **Open your browser:**
    Navigate to [http://localhost:3000](http://localhost:3000)
 
 ## Usage
@@ -465,7 +483,11 @@ Analyze subscription trends by month and day. Identify optimal contact timing pa
 ### 1. Upload Your Data
 - Navigate to the home page
 - Optionally provide context about your data in the textarea
-- Upload a CSV file (≤20MB, ≤30 columns)
+- Upload a CSV file:
+  - **Small files (< 4 MB)**: Direct upload via Vercel function
+  - **Large files (≥ 4 MB)**: Direct upload to Supabase Storage (bypasses Vercel's 4.5 MB limit)
+  - **Maximum**: 20 MB (configurable up to 50 MB on Supabase free tier)
+  - **Column limit**: ≤30 columns
 - The system creates a Postgres table and infers column types
 - **Privacy Note**: Your data is automatically deleted after 24 hours
 
@@ -716,6 +738,8 @@ The application implements automatic data cleanup to protect user privacy:
 │       ├── ingest/route.ts                 # CSV upload and table creation
 │       ├── preview/route.ts                # Data preview endpoint
 │       ├── schema/route.ts                 # Schema metadata endpoint
+│       ├── storage/
+│       │   └── upload-url/route.ts         # Generate pre-signed upload URLs
 │       ├── runs/
 │       │   ├── route.ts                    # Artifact management
 │       │   └── [id]/pin/route.ts           # Pin/unpin artifacts
@@ -768,6 +792,7 @@ The application implements automatic data cleanup to protect user privacy:
 ├── middleware.ts                   # Anonymous authentication middleware
 ├── CLAUDE.md                       # Development guidance for Claude Code
 ├── RLS_IMPLEMENTATION.md           # RLS security implementation guide
+├── STORAGE_SETUP.md                # Supabase Storage setup guide
 └── README.md                       # Project documentation
 ```
 
@@ -787,6 +812,27 @@ This project is configured for deployment on Vercel with automated data cleanup:
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
    - `SUPABASE_SERVICE_ROLE_KEY`
 4. **Deploy**
+
+### Supabase Storage Setup (Required for Production)
+
+**Purpose**: Enable CSV uploads larger than 4 MB by bypassing Vercel's request body limit.
+
+**Setup Steps**:
+1. Go to Supabase Dashboard → Storage
+2. Create bucket: `csv-uploads` (private)
+3. Add RLS policies via SQL Editor
+
+**Detailed Guide**: See [`STORAGE_SETUP.md`](./STORAGE_SETUP.md) for:
+- Complete RLS policy SQL statements
+- Troubleshooting "syntax error at CREATE" issue
+- Storage limits and monitoring
+
+**How it works**:
+- Files < 4 MB: Direct upload to Vercel (faster)
+- Files ≥ 4 MB: Upload to Supabase Storage first, then process
+- All temp files automatically deleted after processing
+
+**Without storage setup**: Users can only upload files < 4 MB (will get 413 error for larger files)
 
 ### Vercel Cron Configuration
 

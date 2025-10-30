@@ -12,7 +12,8 @@
       "Bash(grep:*)",
       "Bash(pnpm dlx:*)",
       "WebFetch(domain:ai-sdk.dev)",
-      "Bash(timeout 60 pnpm tsc:*)"
+      "Bash(timeout 60 pnpm tsc:*)",
+      "WebFetch(domain:vercel.com)"
     ],
     "deny": [],
     "ask": []

@@ -33,6 +33,8 @@ This project strictly uses **pnpm**. Do not use npm or yarn.
 │       ├── ingest/route.ts                 # CSV upload and table creation
 │       ├── preview/route.ts                # Data preview endpoint
 │       ├── schema/route.ts                 # Schema metadata endpoint
+│       ├── storage/
+│       │   └── upload-url/route.ts         # Generate pre-signed upload URLs
 │       ├── runs/
 │       │   ├── route.ts                    # Artifact management
 │       │   └── [id]/pin/route.ts           # Pin/unpin artifacts
@@ -85,6 +87,7 @@ This project strictly uses **pnpm**. Do not use npm or yarn.
 ├── middleware.ts                   # Anonymous authentication middleware
 ├── CLAUDE.md                       # Development guidance for Claude Code
 ├── RLS_IMPLEMENTATION.md           # RLS security implementation guide
+├── STORAGE_SETUP.md                # Supabase Storage setup guide
 └── README.md                       # Project documentation
 ```
 
