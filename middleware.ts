@@ -70,8 +70,9 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
+     * - api/datasets/cleanup (cron job endpoint - skip auth)
      * - public folder
      */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|api/datasets/cleanup|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

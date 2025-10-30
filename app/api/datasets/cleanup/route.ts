@@ -3,6 +3,18 @@ import { createClient } from "@/lib/supabase/server"
 import { sanitizeTableName } from "@/lib/sql-guard"
 import { getPostgresPool } from "@/lib/postgres"
 
+// Vercel cron jobs use GET requests by default
+export async function GET(req: NextRequest) {
+  // Verify request is from Vercel Cron
+  const userAgent = req.headers.get("user-agent") || ""
+  if (userAgent !== "vercel-cron/1.0") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  // Call the cleanup logic
+  return POST(req)
+}
+
 // Session-based cleanup: Delete datasets older than 24 hours
 export async function POST(req: NextRequest) {
   try {
