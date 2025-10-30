@@ -53,11 +53,15 @@ This project strictly uses **pnpm**. Do not use npm or yarn.
 │   └── ui/                         # shadcn/ui component library
 ├── lib/
 │   ├── postgres.ts                 # Direct Postgres connection
+│   ├── rate-limit.ts               # Rate limiting utility
+│   ├── response-parser.ts          # Response parsing utilities
 │   ├── session-cleanup.ts          # Session management utilities
 │   ├── sql-guard.ts                # SQL safety validation
+│   ├── sql-stats.ts                # SQL statistics utilities
 │   ├── types.ts                    # TypeScript definitions
 │   ├── utils.ts                    # Utility functions
-│   ├── ...                         # Additional utilities (vega-config, vega-validator, response-parser, etc.)
+│   ├── vega-config.ts              # Vega-Lite configuration
+│   ├── vega-validator.ts           # Vega-Lite validation
 │   └── supabase/
 │       ├── client.ts               # Supabase client (browser)
 │       └── server.ts               # Supabase client (server)

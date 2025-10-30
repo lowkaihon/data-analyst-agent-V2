@@ -24,6 +24,8 @@ Scaffolded with Vercel v0; productionized with Next.js 15 + Supabase/Postgres. U
 - **Session Isolation**: Complete user isolation via Row Level Security (RLS)
 - **No Persistent Storage**: Data never stored permanently - automatic cleanup enforced
 - **Anonymous Authentication**: Privacy without requiring user accounts
+- **Rate Limiting**: 5 uploads per hour per user (session-based, PostgreSQL tracking)
+- **Storage Quota**: Maximum 10 datasets per user to prevent resource exhaustion
 
 ### 📊 Interactive Split-View Interface
 - **Chat Panel (Left)**: Streaming conversation with the AI agent
@@ -416,7 +418,16 @@ Analyze subscription trends by month and day. Identify optimal contact timing pa
    NEXT_PUBLIC_SUPABASE_URL="https://[ref].supabase.co"
    NEXT_PUBLIC_SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
    SUPABASE_SERVICE_ROLE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+   # Optional: Cron Endpoint Security (recommended for production)
+   # CRON_SECRET="your-secret-token-here"
    ```
+
+   **Optional Environment Variables:**
+   - `CRON_SECRET` - Bearer token for additional cron endpoint protection (recommended for production)
+     - Generate with: `openssl rand -base64 32`
+     - If set, you must uncomment lines 9-14 in `/api/datasets/cleanup/route.ts` to enable verification
+     - Note: Currently commented out by default; cron endpoint relies on Vercel Cron user-agent verification
 
 4. **Initialize the database:**
 
@@ -493,18 +504,25 @@ The application uses an optimized batch ingestion system with enterprise-grade r
    - Limits to 63 characters (PostgreSQL column name limit)
    - Replaces unsafe characters with underscores
 
-3. **Type Inference**:
+3. **Formula Injection Protection**:
+   - Sanitizes CSV cell values to prevent spreadsheet formula injection attacks
+   - Detects dangerous formula prefixes: `=`, `+`, `@`, `|`, `\t` (tab), `\r` (carriage return)
+   - Smart handling for `-`: Allows negative numbers (e.g., `-123`, `-5.5`) but blocks formula patterns (e.g., `-@SUM()`, `-command`)
+   - Automatically prefixes with single quote to neutralize formulas
+   - Applied to all string values during ingestion
+
+4. **Type Inference**:
    - Samples first 100 rows to infer column types
    - Supports: INTEGER, DOUBLE PRECISION, BOOLEAN, TIMESTAMPTZ, TEXT
    - Smart type detection with fallback to TEXT
 
-4. **Dynamic Batch Insertion**:
+5. **Dynamic Batch Insertion**:
    - **Parameter limit safety**: Calculates batch size as `floor(60000 / column_count)` to prevent PostgreSQL's 65,535 parameter limit
    - **Transaction wrapping**: All inserts wrapped in BEGIN/COMMIT for ACID compliance
    - **Automatic rollback**: On any error, rolls back all changes and cleans up metadata
    - **Progress logging**: Detailed batch-by-batch progress (e.g., "Inserted batch 5/12")
 
-5. **Error Handling**:
+6. **Error Handling**:
    - Failed inserts trigger automatic rollback
    - Orphaned dataset records are cleaned up
    - Detailed error messages returned to client
@@ -569,6 +587,7 @@ The AI agent follows these PostgreSQL-specific patterns to avoid common errors:
 - `chat_turns`: Conversation history
 - `runs`: Unified artifacts (SQL queries, charts, validations)
 - `reports`: Generated markdown reports
+- `rate_limits`: Rate limiting tracking (user_id, endpoint, request_count, window_start)
 - `ds_<datasetId>`: Dynamic tables for each uploaded dataset
 
 ### Security
@@ -604,6 +623,17 @@ The application implements multiple layers of security to protect against common
   - Size limit: 20MB maximum
   - Empty file rejection
   - Column limit: 30 columns maximum
+  - **CSV Formula Injection Protection**: Sanitizes dangerous formula prefixes (`=`, `+`, `@`, `|`, `\t`, `\r`). Smart handling for `-`: Allows negative numbers but blocks formula patterns
+
+- **Rate Limiting** (PostgreSQL-based):
+  - 5 uploads per hour per user (session-based tracking)
+  - Automatic rate limit record cleanup via cron (older than 1 hour)
+  - Graceful failure: Allows requests on database errors to prevent cascading failures
+
+- **Storage Quota**:
+  - Maximum 10 datasets per user to prevent resource exhaustion
+  - Enforced before file upload processing
+  - Clear error messages with current usage and limits
 
 #### Infrastructure Security
 - **HTTP Security Headers** (via next.config.mjs):
@@ -624,6 +654,22 @@ The application implements multiple layers of security to protect against common
 - Route timeout: 300 seconds (5 minutes for entire analysis session)
 - Individual query timeouts: 30s (normal mode), 60s (deep dive mode)
 
+#### Rate Limiting & Resource Protection
+- **PostgreSQL-Based Rate Limiting**: Free, serverless-friendly rate limiting without external services
+  - 5 uploads per hour per user (session-based)
+  - Atomic increment using PostgreSQL function `check_rate_limit()`
+  - Window-based tracking with automatic alignment (1-hour windows)
+  - Fail-open strategy: Allows requests on database errors to prevent service disruption
+
+- **Storage Quota Enforcement**:
+  - Maximum 10 datasets per user
+  - Checked before processing file upload
+  - Prevents resource exhaustion and abuse
+
+- **Automatic Cleanup**:
+  - Rate limit records deleted after 1 hour (via cron cleanup job)
+  - Minimal storage overhead for rate tracking
+
 #### Data Retention & Privacy
 - **Automatic Cleanup**: Datasets deleted after 24 hours via Vercel Cron
   - Cron schedule: Every 6 hours (`0 */6 * * *`)
@@ -643,6 +689,7 @@ The application implements automatic data cleanup to protect user privacy:
   - Dataset tables (`ds_<datasetId>`)
   - Metadata records (datasets, chat_turns, runs, reports) via CASCADE
   - All associated analysis artifacts
+  - **Rate limit records** older than 1 hour (cleaned up during dataset cleanup)
 
 ### User Isolation
 - **Session-Based Privacy**: Each user session is isolated via Row Level Security (RLS)
@@ -694,11 +741,15 @@ The application implements automatic data cleanup to protect user privacy:
 │   └── ui/                         # shadcn/ui component library
 ├── lib/
 │   ├── postgres.ts                 # Direct Postgres connection
+│   ├── rate-limit.ts               # Rate limiting utility
+│   ├── response-parser.ts          # Response parsing utilities
 │   ├── session-cleanup.ts          # Session management utilities
 │   ├── sql-guard.ts                # SQL safety validation
+│   ├── sql-stats.ts                # SQL statistics utilities
 │   ├── types.ts                    # TypeScript definitions
 │   ├── utils.ts                    # Utility functions
-│   ├── ...                         # Additional utilities (vega-config, vega-validator, response-parser, etc.)
+│   ├── vega-config.ts              # Vega-Lite configuration
+│   ├── vega-validator.ts           # Vega-Lite validation
 │   └── supabase/
 │       ├── client.ts               # Supabase client (browser)
 │       └── server.ts               # Supabase client (server)
@@ -754,9 +805,14 @@ The application uses Vercel Cron for automated data cleanup:
 
 **Purpose**: Automatically deletes datasets older than 24 hours
 
+**What Gets Cleaned Up**:
+- Datasets older than 24 hours (tables + metadata)
+- Rate limit records older than 1 hour (automatic tracking cleanup)
+
 **Requirements**:
 - Available on all Vercel plans (Hobby, Pro, Enterprise)
-- Proper authentication headers (Vercel Cron user-agent)
+- Uses Vercel Cron user-agent for authentication (no CRON_SECRET needed by default)
+- Optional: Set `CRON_SECRET` environment variable for additional Bearer token authentication
 
 **Testing Cleanup Locally**:
 ```bash

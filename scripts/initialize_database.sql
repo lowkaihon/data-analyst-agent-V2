@@ -156,3 +156,64 @@ DROP POLICY IF EXISTS "Users can delete own reports" ON reports;
 CREATE POLICY "Users can delete own reports" ON reports
   FOR DELETE
   USING (auth.uid() = user_id);
+
+-- Rate limits table: tracks API request counts per user per endpoint
+CREATE TABLE IF NOT EXISTS rate_limits (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  endpoint TEXT NOT NULL,
+  request_count INTEGER DEFAULT 1,
+  window_start TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, endpoint, window_start)
+);
+
+-- Indexes for rate limiting performance
+CREATE INDEX IF NOT EXISTS idx_rate_limits_user_endpoint ON rate_limits(user_id, endpoint, window_start);
+CREATE INDEX IF NOT EXISTS idx_rate_limits_cleanup ON rate_limits(created_at);
+CREATE INDEX IF NOT EXISTS idx_rate_limits_user_id ON rate_limits(user_id);
+
+-- Enable RLS on rate_limits table
+ALTER TABLE rate_limits ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for rate_limits table
+DROP POLICY IF EXISTS "Users can view own rate limits" ON rate_limits;
+CREATE POLICY "Users can view own rate limits" ON rate_limits
+  FOR SELECT
+  USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can insert own rate limits" ON rate_limits;
+CREATE POLICY "Users can insert own rate limits" ON rate_limits
+  FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can update own rate limits" ON rate_limits;
+CREATE POLICY "Users can update own rate limits" ON rate_limits
+  FOR UPDATE
+  USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can delete own rate limits" ON rate_limits;
+CREATE POLICY "Users can delete own rate limits" ON rate_limits
+  FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- Atomic rate limit check function
+-- Returns the current request count after incrementing
+CREATE OR REPLACE FUNCTION check_rate_limit(
+  p_user_id UUID,
+  p_endpoint TEXT,
+  p_window_start TIMESTAMPTZ
+) RETURNS INTEGER AS $$
+DECLARE
+  v_request_count INTEGER;
+BEGIN
+  -- Insert or update atomically using ON CONFLICT
+  INSERT INTO rate_limits (user_id, endpoint, window_start, request_count)
+  VALUES (p_user_id, p_endpoint, p_window_start, 1)
+  ON CONFLICT (user_id, endpoint, window_start)
+  DO UPDATE SET request_count = rate_limits.request_count + 1
+  RETURNING request_count INTO v_request_count;
+
+  RETURN v_request_count;
+END;
+$$ LANGUAGE plpgsql;

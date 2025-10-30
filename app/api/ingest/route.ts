@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 import { getPostgresPool } from "@/lib/postgres"
 import { sanitizeTableName } from "@/lib/sql-guard"
 import { parse } from "csv-parse/sync"
+import { checkRateLimit } from "@/lib/rate-limit"
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024 // 20MB
 const MAX_COLUMNS = 30
@@ -22,6 +23,44 @@ function sanitizeColumnName(name: string): string {
   }
 
   return sanitized
+}
+
+// Sanitize CSV cell values to prevent formula injection
+function sanitizeCSVValue(value: any): any {
+  // Only sanitize string values
+  if (typeof value !== 'string') {
+    return value
+  }
+
+  const trimmed = value.trimStart()
+
+  // Block obvious formula prefixes (OWASP CSV injection guidelines)
+  if (trimmed.startsWith('=') ||
+      trimmed.startsWith('+') ||
+      trimmed.startsWith('@') ||
+      trimmed.startsWith('|') ||
+      trimmed.startsWith('\t') ||
+      trimmed.startsWith('\r')) {
+    // Prefix with single quote to neutralize formula
+    return "'" + value
+  }
+
+  // Smart handling for minus sign: distinguish negative numbers from formulas
+  if (trimmed.startsWith('-')) {
+    const afterMinus = trimmed.substring(1).trimStart()
+
+    // If followed by digit or decimal point, it's a legitimate negative number
+    // Examples: -1, -5.5, -0.123
+    if (/^[\d.]/.test(afterMinus)) {
+      return value  // Allow negative numbers
+    }
+
+    // Otherwise, treat as potential formula injection
+    // Examples: -@SUM(), -command, -=formula
+    return "'" + value
+  }
+
+  return value
 }
 
 export async function POST(req: NextRequest) {
@@ -152,6 +191,51 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 })
     }
 
+    // Rate limiting: 5 uploads per hour per user
+    const rateLimit = await checkRateLimit('/api/ingest', 5, 60 * 60 * 1000)
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        {
+          error: `Rate limit exceeded. Maximum 5 uploads per hour allowed. Try again after ${rateLimit.resetAt.toLocaleTimeString()}.`,
+          resetAt: rateLimit.resetAt.toISOString(),
+          limit: rateLimit.limit,
+          remaining: rateLimit.remaining
+        },
+        {
+          status: 429,
+          headers: {
+            'X-RateLimit-Limit': rateLimit.limit.toString(),
+            'X-RateLimit-Remaining': rateLimit.remaining.toString(),
+            'X-RateLimit-Reset': rateLimit.resetAt.toISOString(),
+            'Retry-After': Math.ceil((rateLimit.resetAt.getTime() - Date.now()) / 1000).toString()
+          }
+        }
+      )
+    }
+
+    // Storage quota: max 10 datasets per user
+    const { count: datasetCount, error: countError } = await supabase
+      .from("datasets")
+      .select("id", { count: 'exact', head: true })
+      .eq("user_id", user.id)
+
+    if (countError) {
+      console.error("Error counting datasets:", countError)
+      return NextResponse.json({ error: "Failed to check storage quota" }, { status: 500 })
+    }
+
+    const MAX_DATASETS_PER_USER = 10
+    if (datasetCount !== null && datasetCount >= MAX_DATASETS_PER_USER) {
+      return NextResponse.json(
+        {
+          error: `Storage quota exceeded. Maximum ${MAX_DATASETS_PER_USER} datasets allowed. Please delete old datasets before uploading new ones.`,
+          current: datasetCount,
+          limit: MAX_DATASETS_PER_USER
+        },
+        { status: 403 }
+      )
+    }
+
     // Generate table name first (before creating the dataset)
     const tempId = crypto.randomUUID()
     const tableName = sanitizeTableName(tempId)
@@ -220,7 +304,7 @@ export async function POST(req: NextRequest) {
             .join(", ")
 
           const insertSQL = `INSERT INTO ${tableName} (${columnNames.map((c) => `"${c}"`).join(", ")}) VALUES ${placeholders}`
-          const values = batch.flatMap((row) => columnNames.map((col) => row[col]))
+          const values = batch.flatMap((row) => columnNames.map((col) => sanitizeCSVValue(row[col])))
 
           await client.query(insertSQL, values)
 

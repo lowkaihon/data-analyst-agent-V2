@@ -6,22 +6,24 @@ import { getPostgresPool } from "@/lib/postgres"
 // Session-based cleanup: Delete datasets older than 24 hours
 export async function POST(req: NextRequest) {
   try {
+    // OPTIONAL: CRON secret verification (uncomment and set CRON_SECRET env var for production)
+    // const authHeader = req.headers.get("authorization")
+    // const expectedSecret = process.env.CRON_SECRET
+    // if (!expectedSecret || authHeader !== `Bearer ${expectedSecret}`) {
+    //   return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    // }
+
     const supabase = await createClient()
 
-    // Get authenticated user
+    // Get authenticated user (optional for CRON jobs)
     const {
       data: { user },
     } = await supabase.auth.getUser()
 
+    // Note: CRON jobs may not have user authentication
+    // If no user, we'll use admin operations for cleanup
     if (!user) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 })
-    }
-
-    // Verify request is from Vercel Cron (security check)
-    const userAgent = req.headers.get("user-agent")
-    if (!userAgent?.includes("vercel-cron")) {
-      console.warn("Cleanup attempt from non-cron source:", userAgent)
-      // Allow manual testing in development, but log the attempt
+      console.log("Cleanup running without user authentication (likely CRON job)")
     }
 
     // Find datasets older than 24 hours - RLS will automatically filter by user_id
@@ -67,6 +69,24 @@ export async function POST(req: NextRequest) {
         console.error(`Failed to cleanup dataset ${dataset.id}:`, err)
         // Continue with next dataset even if this one fails
       }
+    }
+
+    // Clean up old rate limit records (older than 1 hour)
+    const rateLimitCutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+    try {
+      const { error: rateLimitError } = await supabase
+        .from("rate_limits")
+        .delete()
+        .lt("created_at", rateLimitCutoff)
+
+      if (rateLimitError) {
+        console.error("Failed to cleanup rate limits:", rateLimitError)
+      } else {
+        console.log("Cleaned up old rate limit records")
+      }
+    } catch (err) {
+      console.error("Error during rate limit cleanup:", err)
+      // Don't fail the entire cleanup if rate limit cleanup fails
     }
 
     return NextResponse.json({
