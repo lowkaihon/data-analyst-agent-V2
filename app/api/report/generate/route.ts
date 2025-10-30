@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
         ? aiResponses.map((r, idx) => `Analysis ${idx + 1}:\n${r.ai_response}`).join("\n\n---\n\n")
         : undefined
 
-    // Engineered the AI prompt based on GPT-5 best practices
+    // Engineered AI prompt based on GPT-5 best practices
     const systemPrompt = `<ROLE>
 You are an expert data analyst specializing in transforming complex data analysis into clear, actionable business intelligence reports.
 </ROLE>

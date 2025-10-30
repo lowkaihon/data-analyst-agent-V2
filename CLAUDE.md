@@ -28,7 +28,7 @@ This project strictly uses **pnpm**. Do not use npm or yarn.
 │   │   ├── page.tsx                # Split-view analysis (Stage 1)
 │   │   └── loading.tsx             # Suspense boundary
 │   └── api/
-│       ├── chat/[datasetId]/route.ts       # AI chat with tools
+│       ├── chat/[datasetId]/route.ts       # API route handler (170 lines, refactored)
 │       ├── datasets/cleanup/route.ts       # Dataset deletion
 │       ├── ingest/route.ts                 # CSV upload and table creation
 │       ├── preview/route.ts                # Data preview endpoint
@@ -52,6 +52,16 @@ This project strictly uses **pnpm**. Do not use npm or yarn.
 │   │   └── sql-tab.tsx             # Query history
 │   └── ui/                         # shadcn/ui component library
 ├── lib/
+│   ├── ai-tools/                   # AI SDK tools (factory pattern)
+│   │   ├── sql-query-tool.ts       # SQL execution tool (181 lines)
+│   │   └── chart-tool.ts           # Chart generation tool (243 lines)
+│   ├── charts/
+│   │   └── chart-specs.ts          # Vega-Lite chart specifications (600 lines)
+│   ├── prompts/
+│   │   └── chat-prompts.ts         # System prompts for AI modes (400 lines)
+│   ├── supabase/
+│   │   ├── client.ts               # Supabase client (browser)
+│   │   └── server.ts               # Supabase client (server)
 │   ├── postgres.ts                 # Direct Postgres connection
 │   ├── rate-limit.ts               # Rate limiting utility
 │   ├── response-parser.ts          # Response parsing utilities
@@ -60,11 +70,9 @@ This project strictly uses **pnpm**. Do not use npm or yarn.
 │   ├── sql-stats.ts                # SQL statistics utilities
 │   ├── types.ts                    # TypeScript definitions
 │   ├── utils.ts                    # Utility functions
+│   ├── validation-utils.ts         # Field validation and fuzzy matching (93 lines)
 │   ├── vega-config.ts              # Vega-Lite configuration
-│   ├── vega-validator.ts           # Vega-Lite validation
-│   └── supabase/
-│       ├── client.ts               # Supabase client (browser)
-│       └── server.ts               # Supabase client (server)
+│   └── vega-validator.ts           # Vega-Lite validation
 ├── scripts/
 │   ├── reset_database.sql          # Database reset script
 │   └── initialize_database.sql     # Database initialization

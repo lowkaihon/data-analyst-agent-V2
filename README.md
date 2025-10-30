@@ -104,6 +104,8 @@ Generate comprehensive business intelligence reports powered by GPT-5 using data
 ### AI Tools (Server-Side)
 The AI agent uses a minimal 2-tool system with reference-based data flow:
 
+**Architecture**: Tools are implemented using factory functions (`createSQLQueryTool`, `createChartTool`) that inject runtime context (dataset, user, database pool) at request time. This enables clean separation: `route.ts` handles HTTP requests (170 lines), while tools in `lib/ai-tools/` handle business logic (424 lines total). See [Project Structure](#project-structure) for file organization.
+
 1. **`executeSQLQuery`**: Runs SELECT-only queries with automatic LIMIT enforcement
    - Executes SQL against dataset table
    - Stores full results in `runs.sample` (JSONB column)
@@ -710,7 +712,7 @@ The application implements automatic data cleanup to protect user privacy:
 │   │   ├── page.tsx                # Split-view analysis (Stage 1)
 │   │   └── loading.tsx             # Suspense boundary
 │   └── api/
-│       ├── chat/[datasetId]/route.ts       # AI chat with tools
+│       ├── chat/[datasetId]/route.ts       # API route handler (170 lines, refactored)
 │       ├── datasets/cleanup/route.ts       # Dataset deletion
 │       ├── ingest/route.ts                 # CSV upload and table creation
 │       ├── preview/route.ts                # Data preview endpoint
@@ -734,6 +736,16 @@ The application implements automatic data cleanup to protect user privacy:
 │   │   └── sql-tab.tsx             # Query history
 │   └── ui/                         # shadcn/ui component library
 ├── lib/
+│   ├── ai-tools/                   # AI SDK tools (factory pattern)
+│   │   ├── sql-query-tool.ts       # SQL execution tool (181 lines)
+│   │   └── chart-tool.ts           # Chart generation tool (243 lines)
+│   ├── charts/
+│   │   └── chart-specs.ts          # Vega-Lite chart specifications (600 lines)
+│   ├── prompts/
+│   │   └── chat-prompts.ts         # System prompts for AI modes (400 lines)
+│   ├── supabase/
+│   │   ├── client.ts               # Supabase client (browser)
+│   │   └── server.ts               # Supabase client (server)
 │   ├── postgres.ts                 # Direct Postgres connection
 │   ├── rate-limit.ts               # Rate limiting utility
 │   ├── response-parser.ts          # Response parsing utilities
@@ -742,11 +754,9 @@ The application implements automatic data cleanup to protect user privacy:
 │   ├── sql-stats.ts                # SQL statistics utilities
 │   ├── types.ts                    # TypeScript definitions
 │   ├── utils.ts                    # Utility functions
+│   ├── validation-utils.ts         # Field validation and fuzzy matching (93 lines)
 │   ├── vega-config.ts              # Vega-Lite configuration
-│   ├── vega-validator.ts           # Vega-Lite validation
-│   └── supabase/
-│       ├── client.ts               # Supabase client (browser)
-│       └── server.ts               # Supabase client (server)
+│   └── vega-validator.ts           # Vega-Lite validation
 ├── scripts/
 │   ├── reset_database.sql          # Database reset script
 │   └── initialize_database.sql     # Database initialization
