@@ -1107,44 +1107,179 @@ Format your response with:
 
     }
 
-    // Engineered the AI prompt based on GPT-5-mini (low reasoning) best practices
-    const deepDiveSystemPrompt = `<role>
+    // Helper function to build adaptive deep-dive system prompt based on dataset size
+    function buildDeepDiveSystemPrompt(dataset: any, schemaColumns: string): string {
+      const columnCount = dataset.column_count
+
+      // Schema section with columns
+      const schemaSection = schemaColumns
+        ? `<dataset>
+Table: \`${dataset.table_name}\`
+Rows: ${dataset.row_count}
+Columns: ${columnCount}
+
+Available columns:
+${schemaColumns}
+</dataset>`
+        : `<dataset>
+Table: \`${dataset.table_name}\`
+Rows: ${dataset.row_count}
+Columns: ${columnCount}
+</dataset>`
+
+      // Adaptive analysis scope based on dataset size
+      let analysisScope: string
+      let dimensionPrioritization = ''
+      let explorationDepth: string
+
+      if (columnCount <= 10) {
+        analysisScope = `Small dataset (${columnCount} columns) - Comprehensive coverage expected:
+
+Expected exploration depth:
+- 15-25 SQL queries exploring all dimensions comprehensively
+- 5-7 visualizations covering key distributions and patterns
+
+Thorough exploration of all dimensions, their interactions, and hypothesis validation.`
+
+        explorationDepth = `□ ALL dimensions analyzed individually (except IDs, timestamps, metadata)
+□ ALL meaningful two-way interactions explored
+□ At least 1-2 three-way interactions investigated
+□ Continuous variables explored with binning and distribution analysis`
+
+      } else if (columnCount <= 20) {
+        analysisScope = `Medium dataset (${columnCount} columns) - Thorough multi-dimensional analysis expected:
+
+Expected exploration depth:
+- 20-30 SQL queries covering dimensions, interactions, and validations
+- 5-7 visualizations for major findings and interactions
+
+Comprehensive analysis of all major dimensions with cross-validation and hypothesis testing.`
+
+        explorationDepth = `□ ALL major dimensions analyzed individually (skip only IDs/metadata)
+□ At least 4-6 two-way dimension interactions explored
+□ At least 2-3 three-way interactions or deep segment drills
+□ Continuous variables explored with binning and distribution analysis`
+
+      } else {
+        analysisScope = `Wide dataset (${columnCount} columns) - Focused depth on priority dimensions expected:
+
+Expected exploration depth:
+- 22-35 SQL queries prioritizing high-value dimensions and key interactions
+- 6-7 visualizations for high-priority patterns
+
+Deep analysis of top 12-18 dimensions with robust validation and multi-dimensional drilling.`
+
+        explorationDepth = `□ Top 12-18 most relevant dimensions analyzed individually (prioritize per guidelines below)
+□ At least 5-7 two-way dimension interactions explored among high-priority dimensions
+□ At least 3-4 three-way interactions or deep segment drills
+□ Continuous variables explored with binning and distribution analysis
+□ Explicitly note any columns skipped and why (IDs, constants, redundant, etc.)`
+
+        dimensionPrioritization = `
+<dimension_prioritization>
+With ${columnCount} columns, focus on quality over coverage.
+
+High Priority (analyze individually + in interactions):
+✓ Target/outcome variables (the primary metric or outcome being analyzed)
+✓ High-cardinality categoricals (5-30 unique values for segmentation)
+✓ Continuous/numeric variables with substantial variation
+✓ Business-critical dimensions mentioned in user context
+✓ Temporal dimensions (month, quarter, day_of_week)
+
+Low Priority (skip or minimal analysis):
+✗ ID columns, row numbers, unique identifiers
+✗ Near-constant columns (>95% same value)
+✗ Administrative metadata (created_at, updated_by, system_flags)
+✗ Redundant encodings (if both month_name and month_num exist, use one)
+✗ Very high cardinality (>50 unique values for small datasets)
+
+Target: Deep analysis of 12-18 high-value dimensions rather than shallow coverage of all ${columnCount} columns.
+</dimension_prioritization>`
+      }
+
+      return `<role>
 Data analyst performing comprehensive analysis.${dataset.user_context ? `
 Context: "${dataset.user_context}"` : ''}
 </role>
 
-<dataset>
-Table: \`${dataset.table_name}\`
-Rows: ${dataset.row_count}, Columns: ${dataset.column_count}
-</dataset>
+${schemaSection}
+
+<analysis_scope>
+${analysisScope}
+</analysis_scope>
+${dimensionPrioritization}
 
 <task>
 Conduct a thorough, exhaustive analysis of this dataset using SQL queries and visualizations.
 
-Step budget: You have 30 steps available. Typical comprehensive analysis uses 20-30 steps.
+IMPORTANT: You are starting fresh with this deep-dive analysis. Previous chat history is not available. The user has provided all necessary context in their request above. Focus on the dataset and user's stated objectives.
+
+This is a COMPREHENSIVE analysis, not a quick summary. Comprehensive analysis requires extensive exploration with multiple rounds of querying, validation, and hypothesis testing.
 </task>
 
 <success_criteria>
-Analysis is complete when ALL requirements are met:
+Analysis is complete when ALL requirements below are met. Requirements are specific and quantitative:
 
-Required Deliverables:
-□ Major dimension interactions explored
-□ Significant outliers, patterns, and anomalies investigated
-□ Standout segments identified with detailed breakdowns
-□ Hypotheses tested across relevant subgroups and dimensions
-□ 3-5 actionable insights with strong quantitative evidence (sample sizes, metrics, comparisons)
-□ Key claims validated through confirmation queries
-□ 5-7 high-impact visualizations covering major distributions, trends, and key patterns
+Exploration Depth:
+${explorationDepth}
+
+Cross-Validation Requirements:
+□ Every major pattern found MUST be validated across at least 2 other dimensions
+  Example: If "Category A has high outcome rate" is found, test if this holds across time periods, other dimensions, and subgroups
+□ Top 3-5 findings tested for robustness across relevant subgroups
+□ At least 2 negative interaction tests (identify what combinations to AVOID)
+
+Deliverables:
+□ 5-7 high-impact visualizations covering:
+  - Major distributions (continuous variables, outcome rates)
+  - Key comparisons (category performance, time period patterns)
+  - At least 2 interaction heatmaps or grouped comparisons
+  - At least 1 outlier or anomaly investigation chart
+□ 5-8 actionable insights with strong quantitative evidence:
+  - Each insight must include sample sizes, conversion rates, and comparisons
+  - At least 3 insights must be multi-dimensional (combining 2+ factors)
+□ 3-5 standout segments identified with:
+  - Size (n=X), conversion rate, absolute conversion count
+  - Breakdown by at least one additional dimension
+  - Clear action implications
+
+Data Quality:
+□ Outliers and anomalies explicitly investigated (not just mentioned)
+□ Missing/unknown value segments analyzed separately where significant
+□ Data quality issues documented with evidence
+
+Stop Condition:
+Analysis is complete when the criteria above are met AND additional queries yield diminishing insights (new patterns are minor variations of known patterns).
 </success_criteria>
 
-<analysis_approach>
-Effective analysis explores multiple angles:
-• When patterns emerge, validate them across subgroups
-• When segments stand out, drill into their characteristics
-• When hypotheses form, test them with targeted queries
-• When one dimension is explored, examine related dimensions
-• When outliers appear, investigate their context
-</analysis_approach>
+<analysis_phases>
+A thorough analysis typically progresses through phases:
+
+Phase 1 - Initial Exploration:
+- Individual dimension analysis (conversion/distribution by key dimensions)
+- Overall statistics and distributions
+- Initial pattern identification
+
+Phase 2 - Pattern Validation:
+- Confirm initial patterns with targeted queries
+- Check if patterns hold across subgroups
+- Investigate anomalies and outliers
+
+Phase 3 - Deep Drilling:
+- Two-way and three-way interactions
+- Combined segment analysis (e.g., "Category A + Value Range B + Time Period C")
+- Continuous variable interactions with categorical dimensions
+- Negative interaction identification
+
+Phase 4 - Hypothesis Testing:
+- Test if high-performing segments work across other dimensions
+- Test if effects hold within different subgroups
+- Validate super-segments and anti-patterns
+
+Phase 5 - Final Synthesis:
+- Segment scoring or ranking
+- Volume vs. conversion trade-off analysis
+</analysis_phases>
 
 <tools>
 executeSQLQuery: Execute SELECT query. Returns {success, queryId, rowCount, preview, analysis}. Use 'analysis' field for insights from full results.
@@ -1164,7 +1299,7 @@ PostgreSQL dialect - SELECT only against \`${dataset.table_name}\`:
 5. Date Constraints: Never use Oracle functions (to_date). Never cast temporal types to integers. Use EXTRACT(MONTH/YEAR FROM col) for numeric date components.
 6. Rate Calculations: Use AVG(CASE WHEN condition THEN 1.0 ELSE 0.0 END). Prevent divide-by-zero with NULLIF.
 7. Reserved Words: Quote reserved columns ("default", "user", "order") or alias in base CTE (SELECT "default" AS is_default).
-8. Filtering: Use WHERE to filter rows before aggregation. Use HAVING to filter aggregated results.
+8. Filtering: USE WHERE to filter rows before aggregation. Use HAVING to filter aggregated results.
 9. Custom Sort: Add order column in base CTE, or use ARRAY_POSITION(ARRAY['A','B'], col). For months: ARRAY_POSITION(ARRAY['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'], LOWER(month_col)).
 10. Boolean Handling: Treat boolean columns as boolean. Use CASE WHEN bool_col THEN 1.0 ELSE 0.0 END or bool_col IS TRUE. Never compare booleans to numbers/strings or use IN (...) with mixed types.
 </sql_rules>
@@ -1173,29 +1308,32 @@ PostgreSQL dialect - SELECT only against \`${dataset.table_name}\`:
 Structure response with TWO sections:
 
 === EXECUTIVE SUMMARY ===
-[3-5 key insights in max 10 sentences with evidence inline]
+[5-8 key insights in max 12 sentences with evidence inline]
 
 See Charts tab for visualizations and SQL tab for detailed queries.
 
 You might also explore:
-[3 follow-up questions]
+[3 follow-up questions for even deeper analysis]
 
 === DETAILED ANALYSIS ===
 
 Key Findings:
-[Numbered list with evidence, metrics, sample sizes]
+[Numbered list with evidence, metrics, sample sizes - minimum 8 findings including at least 3 multi-dimensional insights]
 
 Validation Performed:
-[Numbered list of checks run and results]
+[Numbered list of checks run and results - minimum 5 validation checks]
 
 Hypothesis Tests & Segment Drills:
-[Numbered list of tests performed and findings]
+[Numbered list of tests performed and findings - minimum 6 tests including cross-validation and negative interactions]
 
 Standout Segments:
-[Numbered list of segments with size and key metrics]
+[Numbered list of segments with size, conversion rate, breakdown by additional dimension, and action implications - minimum 5 segments]
+
+Interactions Explored:
+[Numbered list of two-way and three-way interactions analyzed with key takeaways]
 
 Limitations & Data Quality:
-[Numbered list of caveats and data issues]
+[Numbered list of caveats and data issues with supporting evidence]
 
 <constraints>
 • Plain text only (no markdown, code blocks, tables)
@@ -1205,6 +1343,29 @@ Limitations & Data Quality:
 </constraints>
 
 </output_format>`
+    }
+
+    // Fetch schema for deep-dive mode
+    let schemaColumns = ''
+    if (isDeepDive) {
+      const pool = getPostgresPool()
+      const columnsQuery = `
+        SELECT column_name, data_type
+        FROM information_schema.columns
+        WHERE table_name = $1 AND column_name != 'id'
+        ORDER BY ordinal_position
+      `
+      const columnsResult = await pool.query(columnsQuery, [dataset.table_name])
+      schemaColumns = columnsResult.rows.map(col => {
+        const type = col.data_type === 'integer' || col.data_type === 'double precision' || col.data_type === 'numeric'
+          ? 'number'
+          : col.data_type === 'boolean' ? 'boolean' : 'text'
+        return `- ${col.column_name} (${type})`
+      }).join('\n')
+    }
+
+    // Build adaptive deep-dive system prompt
+    const deepDiveSystemPrompt = buildDeepDiveSystemPrompt(dataset, schemaColumns)
 
     // Normal Mode
     // Engineered the AI prompt based on GPT-4o best practices
@@ -1378,11 +1539,11 @@ You might also ask:
       system: isDeepDive ? deepDiveSystemPrompt : systemPrompt,
       messages: convertToModelMessages(messages),
       tools,
-      stopWhen: stepCountIs(isDeepDive ? 40 : 10),  // Deep dive: comprehensive analysis (30 steps + 10 buffer). Normal: responsive Q&A (10 steps).
+      stopWhen: stepCountIs(isDeepDive ? 50 : 10),  // Deep dive: supports 22-35 queries + 6-7 charts (28-42 tool calls) with comfortable buffer. Normal: responsive Q&A (10 steps).
       // Only apply reasoningEffort for reasoning models
       providerOptions: {
         openai: {
-          reasoningEffort: 'low'
+          reasoningEffort: 'medium'
         }
       },
       onStepFinish: ({ toolCalls, toolResults }) => {

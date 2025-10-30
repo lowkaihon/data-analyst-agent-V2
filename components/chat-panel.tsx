@@ -364,10 +364,11 @@ export function ChatPanel({ datasetId, onGenerateReport, isGeneratingReport, onS
               Start Deep Dive Analysis
             </DialogTitle>
             <DialogDescription>
-              Deep dive starts with fresh conversation context for unbiased comprehensive analysis.
-              All SQL queries and charts remain accessible in their tabs. The analysis uses up to
-              30 steps and may take 2-3 minutes. Customize the prompt below to reference specific
-              findings if needed.
+              Deep dive starts with fresh conversation context for unbiased comprehensive analysis. All SQL queries and charts remain accessible in their tabs.
+              <br /><br />
+              The analysis performs 20-30 SQL queries exploring individual dimensions, multi-way interactions, cross-validations, and hypothesis testing. It typically generates 5-7 high-impact visualizations and may take 4-5 minutes to complete.
+              <br /><br />
+              Customize the prompt below to guide the analysis focus (e.g., &quot;Focus on customer retention patterns&quot; or &quot;Prioritize seasonal trends&quot;).
             </DialogDescription>
           </DialogHeader>
 

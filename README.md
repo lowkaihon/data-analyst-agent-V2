@@ -5,14 +5,24 @@ An AI-powered data analysis platform that enables interactive exploration of CSV
 [![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com/kaihon333haha-5908s-projects/v0-data-analyst-agent)
 [![Built with v0](https://img.shields.io/badge/Built%20with-v0.app-black?style=for-the-badge)](https://v0.app/chat/projects/WdUJaFsY9r0)
 
-Scaffolded with Vercel v0; productionized with Next.js 15 + Supabase/Postgres. Used AI pair-programming (Claude Code) to accelerate refactors.
+Scaffolded with Vercel v0; productionized with Next.js 16 + Supabase/Postgres. Used AI pair-programming (Claude Code) to accelerate refactors.
 
 ## Features
 
 ### 🤖 AI-Powered Analysis
-- **Multi-Model Architecture**: Uses GPT-4o for normal mode and GPT-5-mini for deep dive mode. Uses GPT-4o-mini for SQL subagent (fast, cost-effective analysis of full query results). Uses GPT-5 for report generation.
+
+#### Technical Specifications
+
+| Component | Configuration | Details |
+|-----------|--------------|---------|
+| **Normal Mode** | GPT-4o | 10 steps max, 1-3 queries typical, judgment-based charts |
+| **Deep Dive Mode** | GPT-5-mini (reasoningEffort: 'medium') | 50 steps max (system buffer), 20-30 SQL queries expected, 5-7 visualizations, 4-5 minute duration |
+| **SQL Sub-Agent** | GPT-4o-mini | Analyzes full query results (up to 100 rows), cost-effective |
+| **Report Generation** | GPT-5 | High-quality synthesis from pinned artifacts |
+
+- **Multi-Model Architecture**: Uses GPT-4o for normal mode and GPT-5-mini (reasoningEffort: 'medium') for deep dive mode. Uses GPT-4o-mini for SQL subagent (fast, cost-effective analysis of full query results). Uses GPT-5 for report generation.
 - **Dual-Mode Architecture**: Normal mode (focused Q&A with scope discipline) + Deep dive mode (agentic reasoning for comprehensive exploration)
-- **Multi-Step Tool Calling**: Normal mode uses 1-3 queries for focused answers (10 step max). Deep dive uses 20-30 analysis steps (40 step max with buffer)
+- **Multi-Step Tool Calling**: See [Technical Specifications](#technical-specifications) table above for query depths and step limits
 - **Focused Answers**: Normal mode answers exactly what's asked without unsolicited exploration. Deep dive mode proactively investigates spikes, outliers, and patterns
 - **Smart Visualizations**: Normal mode creates charts when data shows patterns. Deep dive generates 5-7 high-impact charts for key distributions
 - **Self-Correction**: Retries failed queries with helpful error messages and fix suggestions
@@ -30,7 +40,7 @@ Scaffolded with Vercel v0; productionized with Next.js 15 + Supabase/Postgres. U
 ### 📊 Interactive Split-View Interface
 - **Chat Panel (Left)**: Streaming conversation with the AI agent
 - **Data Explorer Tabs (Right)**:
-  - **Preview**: Scrollable data table with first 100 rows
+  - **Preview**: Scrollable data table with first 100 rows (user-facing view)
   - **Schema**: Column metadata, types, and statistics
   - **SQL**: Query history with copy, re-run, and pin actions
   - **Charts**: Gallery of generated visualizations
@@ -68,7 +78,7 @@ Generate comprehensive business intelligence reports powered by GPT-5 using data
 ## Tech Stack
 
 ### Frontend
-- **Next.js 15** with TypeScript and App Router
+- **Next.js 16** with TypeScript and App Router
 - **shadcn/ui** + Tailwind CSS for UI components
 - **AI SDK 5** (`@ai-sdk/react` + `ai`) for streaming chat with multi-step tool calling
   - `useChat` hook with `DefaultChatTransport` for client-side streaming
@@ -88,11 +98,7 @@ Generate comprehensive business intelligence reports powered by GPT-5 using data
   - Used for DDL operations (CREATE TABLE)
   - Optimized batch inserts with dynamic sizing
   - Transaction-wrapped ingestion for ACID compliance
-- **OpenAI AI Models**:
-  - GPT-4o for normal mode: 10-step workflows for focused analysis
-  - GPT-5-mini for deep dive mode: AI told 30 steps (plans 20-30 analysis), system allows 40 (10-step buffer)
-  - GPT-4o-mini for sub-agent: Analyzes full SQL results (up to 100 rows) cost-effectively
-  - GPT-5 for report generation: High-quality synthesis of findings
+- **OpenAI AI Models**: See [Technical Specifications](#technical-specifications) for model assignments, step counts, and query depths
 - **Node.js Runtime** for API routes with SQL operations
 
 ### AI Tools (Server-Side)
@@ -127,7 +133,7 @@ The AI agent uses a minimal 2-tool system with reference-based data flow:
      • Heatmaps: Use aggregated data (GROUP BY x, y). Limit to ≤30 categories per dimension for readability
    - **Field Validation**: createChart validates that xField, yField, and colorField exist in the query results. If a field name doesn't match, the system uses fuzzy matching (Levenshtein distance) to suggest the closest available column name with "Did you mean...?" suggestions for typos.
 
-**Reference-Based Pattern**: Instead of passing large datasets through AI context, executeSQLQuery stores data (1,500 rows) in DB and returns a small preview + queryId + original SQL. When visualization is needed, createChart re-executes the SQL intelligently:
+**Reference-Based Pattern**: Instead of passing large datasets through AI context, executeSQLQuery stores data (up to 1,500 rows) in DB and returns a small preview + queryId + original SQL. When visualization is needed, createChart re-executes the SQL intelligently:
 - For datasets ≤chart limit: Fetches full data (1.5K-10K rows depending on chart type)
 - For boxplots >10K rows: Automatically uses SQL aggregates (PERCENTILE_CONT) for accurate distribution statistics
 - For other charts exceeding limits: Returns error with guidance to aggregate data in SQL
@@ -195,9 +201,9 @@ Suggested follow-ups:
 
 For exploratory analysis or comprehensive investigations, use Deep Dive mode instead.
 
-### Deep Dive Mode (GPT-5-mini, 40 steps max)
+### Deep Dive Mode (GPT-5-mini, 50 steps max)
 
-For complex datasets or when you need comprehensive insights, activate **Deep Dive Mode** for an exhaustive analysis (AI told 30 steps, plans 20-30 step analysis, system allows 40 with 10-step safety buffer).
+For complex datasets or when you need comprehensive insights, activate **Deep Dive Mode** for an exhaustive analysis.
 
 **How to Use Deep Dive:**
 
@@ -205,12 +211,13 @@ For complex datasets or when you need comprehensive insights, activate **Deep Di
 2. **Review/Edit the analysis prompt** in the dialog:
    - Default: "Conduct a comprehensive analysis to identify actionable insights. Explore individual feature relationships with the target variable, multi-dimensional interactions between features, and key patterns or segments. Use exploratory analysis, visualization, statistical validation, and synthesis to deliver data-driven recommendations."
    - Customize to focus on specific features, business questions, or analytical approaches
-3. **Click "Start Deep Dive"** to begin (analysis takes 2-3 minutes, powered by GPT-5-mini)
+3. **Click "Start Deep Dive"** to begin (analysis takes 4-5 minutes, powered by GPT-5-mini with reasoningEffort: 'medium')
 
-**Deep Dive Workflow (AI Budget: 30 Steps, System Max: 40)**
+**Deep Dive Workflow (AI Budget: 50 Steps, Adaptive based on dataset complexity)**
 
-**AI is told:** 30 steps for analysis (plans for 20-30 steps based on complexity)
-**System allows:** 40 steps total (10-step safety buffer in case AI goes over)
+**System allows:** 50 steps total with comfortable buffer
+**Expected exploration:** 20-30 SQL queries + 5-7 visualizations (28-42 tool calls)
+**Adaptive scope:** Query depth adjusts based on column count (≤10, 11-20, 21-30 columns)
 
 Deep dive mode trusts GPT-5-mini's agentic reasoning capabilities to autonomously determine the best exploration approach. Unlike normal mode's focused Q&A, deep dive operates with minimal restrictions:
 
@@ -219,8 +226,9 @@ Deep dive mode trusts GPT-5-mini's agentic reasoning capabilities to autonomousl
 - Explore major dimensions, patterns, outliers, and feature interactions
 - Validate key findings
 - Deliver 3-5 actionable insights with strong evidence
-- You have 30 steps available (typical comprehensive analysis uses 20-30 steps)
-- Create 5-7 high-impact visualizations for major distributions and key patterns
+- Expected exploration depth: 20-30 SQL queries covering dimensions, interactions, cross-validations, and hypothesis testing
+- Typically generates 5-7 high-impact visualizations
+- Adaptive requirements based on dataset size (small/medium/wide)
 
 **How it works:**
 The AI autonomously decides what to explore based on the data and user's objectives. It may:
@@ -237,7 +245,7 @@ Responses are formatted with two sections:
 
 The agentic approach allows GPT-5-mini to adapt its exploration strategy to each unique dataset and question, rather than following a rigid workflow.
 
-**Performance Note**: The UI implements React.memo, lazy rendering, and memoized operations to maintain smooth interactions during the 20-30 step analysis workflow. Tool calls render efficiently even with 40+ steps in the conversation history.
+**Performance Note**: The UI implements React.memo, lazy rendering, and memoized operations to maintain smooth interactions during comprehensive analysis sessions. Tool calls render efficiently even with 50+ steps in the conversation history.
 
 **When to Use Each Mode:**
 
@@ -466,11 +474,10 @@ Analyze subscription trends by month and day. Identify optimal contact timing pa
   - Runs SQL queries to analyze your data
   - Generates relevant visualizations
   - Provides concise insights
-- Switch to **Deep Dive mode** for exhaustive analysis (30-step budget, 40-step system max):
+- Switch to **Deep Dive mode** for exhaustive analysis (50-step system max, 4-5 minutes):
   - Click "Deep Dive" button in chat header
   - Customize the analysis prompt if needed
-  - Get comprehensive insights with 5-7 high-impact visualizations
-  - Powered by GPT-5-mini for advanced reasoning
+  - Get comprehensive insights (see [Technical Specifications](#technical-specifications))
 
 ### 3. Review Artifacts
 - **Preview Tab**: Browse your raw data
@@ -532,26 +539,12 @@ The application uses an optimized batch ingestion system with enterprise-grade r
 ### Data Flow (Reference-Based Pattern)
 1. **CSV Upload** → Parsed and inserted into Postgres table `ds_<datasetId>` using optimized batch pipeline
 2. **User Question** → AI agent processes user questions using appropriate mode strategy
-3. **Tool Execution Loop**:
+3. **Tool Execution Loop** (see [Technical Specifications](#technical-specifications) for model assignments and step counts):
    - **Normal mode** (GPT-4o): `stepCountIs(10)` for focused analysis
-   - **Deep dive mode** (GPT-5-mini): `stepCountIs(40)` - AI told 30 steps, 10-step safety buffer:
-     - AI plans for 20-30 steps based on complexity: SQL exploration and selective visualization (5-7 charts)
-     - System allows up to 40 steps total to provide safety buffer
-     - This buffer ensures analysis completes even if AI goes slightly over budget
-   - **executeSQLQuery**:
-     - Executes SELECT query against dataset table
-     - Stores full results in `runs.sample` (JSONB)
-     - Spawns GPT-4o-mini sub-agent to analyze full results (up to 100 rows)
-     - Returns to AI: `{ queryId, rowCount, preview, analysis, reasoning }` (preview: only 5 rows)
-     - On error: Returns helpful message with fix suggestions (e.g., lists available columns)
-   - **createChart**: Generates Vega-Lite chart specifications
-     - Receives queryId from executeSQLQuery
-     - Re-executes original SQL intelligently based on dataset size:
-       • ≤limit: Fetches data with chart-specific limit (1.5K/5K/10K rows)
-       • Boxplots >10K: Automatically converts to SQL aggregates (PERCENTILE_CONT)
-       • Other charts >limit: Returns error with aggregation guidance
-     - Generates optimized Vega-Lite spec with accessibility features
-     - Stores spec + SQL + data in `runs` table for transparency
+   - **Deep dive mode** (GPT-5-mini with reasoningEffort: 'medium'): `stepCountIs(50)` with adaptive scope based on column count
+   - **Tools** (detailed specifications in [AI Tools](#ai-tools-server-side) section):
+     - **executeSQLQuery**: Executes queries, stores full results in DB, returns 5-row preview + queryId + AI analysis
+     - **createChart**: Generates Vega-Lite visualizations using queryId reference with intelligent data fetching
    - **Chart usage patterns**:
      - Normal mode: Creates charts when data shows clear patterns (judgment-based)
      - Deep dive mode: Creates 5-7 high-impact charts for key distributions and insights
@@ -653,6 +646,7 @@ The application implements multiple layers of security to protect against common
 #### Timeout Protection
 - Route timeout: 300 seconds (5 minutes for entire analysis session)
 - Individual query timeouts: 30s (normal mode), 60s (deep dive mode)
+- Deep dive analysis typically completes in 4-5 minutes (within timeout limit)
 
 #### Rate Limiting & Resource Protection
 - **PostgreSQL-Based Rate Limiting**: Free, serverless-friendly rate limiting without external services
