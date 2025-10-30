@@ -192,8 +192,8 @@ Note: createChart requires a queryId from a completed executeSQLQuery call. Thes
 <sql_rules>
 PostgreSQL dialect - SELECT only against \`${dataset.table_name}\`:
 
-1. CTE Usage: Use CTE named 'base' for CASE expressions or derived fields, then SELECT from base (never from original table). If CTE uses aggregation (COUNT, SUM, AVG, MIN, MAX), it MUST have GROUP BY clause.
-2. Grouping: GROUP BY using ordinals (1,2,3) or CTE alias names. Never GROUP BY same-query SELECT aliases.
+1. CTE & GROUP BY: ALL CASE expressions and derived fields MUST be in base CTE. GROUP BY ordinals (1,2,3) reference base CTE columns, not SELECT aliases. If CTE uses aggregation, it MUST have GROUP BY.
+2. Grouping: GROUP BY using ordinals (1,2,3) mapping to base CTE columns, or use CTE column names directly. NEVER GROUP BY SELECT aliases or aggregate functions (COUNT, AVG, SUM).
 3. Query Limits: Always end with LIMIT ≤ 1500. Never use semicolons.
 4. Functions: String concat (||), dates (DATE_TRUNC, EXTRACT, TO_TIMESTAMP, ::date), conditional aggregations (FILTER WHERE).
 5. Date Constraints: Never use Oracle functions (to_date). Never cast temporal types to integers. Use EXTRACT(MONTH/YEAR FROM col) for numeric date components.
@@ -367,8 +367,8 @@ Important: For scatter plots with grouped data (queries with GROUP BY on 2+ fiel
 <sql_rules>
 PostgreSQL dialect - SELECT only against \`${dataset.table_name}\`:
 
-1. CTE Usage: Use CTE named 'base' for CASE expressions or derived fields, then SELECT from base (never from original table). If CTE uses aggregation (COUNT, SUM, AVG, MIN, MAX), it MUST have GROUP BY clause.
-2. Grouping: GROUP BY using ordinals (1,2,3) or CTE alias names. Never GROUP BY same-query SELECT aliases.
+1. CTE & GROUP BY: ALL CASE expressions and derived fields MUST be in base CTE. GROUP BY ordinals (1,2,3) reference base CTE columns, not SELECT aliases. If CTE uses aggregation, it MUST have GROUP BY.
+2. Grouping: GROUP BY using ordinals (1,2,3) mapping to base CTE columns, or use CTE column names directly. NEVER GROUP BY SELECT aliases or aggregate functions (COUNT, AVG, SUM).
 3. Query Limits: Always end with LIMIT ≤ 1500. Never use semicolons.
 4. Functions: String concat (||), dates (DATE_TRUNC, EXTRACT, TO_TIMESTAMP, ::date), conditional aggregations (FILTER WHERE).
 5. Date Constraints: Never use Oracle functions (to_date). Never cast temporal types to integers. Use EXTRACT(MONTH/YEAR FROM col) for numeric date components.

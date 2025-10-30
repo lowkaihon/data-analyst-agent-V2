@@ -56,9 +56,12 @@ export async function buildChartSpec(params: ChartParams): Promise<ChartResult> 
   const sampleValue = data[0]?.[xField]
   // Stricter temporal detection: must be string-like date format, not bare integers
   // Prevents integers (1, 2, 3...) from being treated as timestamps
+  // Also rejects range patterns (0-999) and special characters (<, >, +)
   const isXTemporal = typeof sampleValue === "string"
                      && !isNaN(Date.parse(sampleValue))
                      && isNaN(Number(sampleValue))
+                     && !/[<>+]/.test(sampleValue)           // Reject <, >, +
+                     && !/^\d+\s*-\s*\d+/.test(sampleValue)  // Reject numeric ranges
 
   // Enhanced type detection for x-axis: distinguish discrete integer sequences from continuous numeric data
   let xType: string

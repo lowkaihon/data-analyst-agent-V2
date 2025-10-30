@@ -15,7 +15,7 @@ Scaffolded with Vercel v0; productionized with Next.js 16 + Supabase/Postgres. U
 | Component | Configuration | Details |
 |-----------|--------------|---------|
 | **Normal Mode** | GPT-4o | 10 steps max, 1-3 queries typical, judgment-based charts |
-| **Deep Dive Mode** | GPT-5-mini (reasoningEffort: 'medium') | 50 steps max (system buffer), 20-30 SQL queries expected, 5-7 visualizations, 4-5 minute duration |
+| **Deep Dive Mode** | GPT-5-mini (reasoningEffort: 'medium') | 50 steps max (system buffer), 20-30 SQL queries expected, 5-7 visualizations, 5-10 minute duration |
 | **SQL Sub-Agent** | GPT-4o-mini | Analyzes full query results (up to 100 rows), cost-effective |
 | **Report Generation** | GPT-5 | High-quality synthesis from pinned artifacts |
 
@@ -218,7 +218,7 @@ For complex datasets or when you need comprehensive insights, activate **Deep Di
 2. **Review/Edit the analysis prompt** in the dialog:
    - Default: "Conduct a comprehensive analysis to identify actionable insights. Explore individual feature relationships with the target variable, multi-dimensional interactions between features, and key patterns or segments. Use exploratory analysis, visualization, statistical validation, and synthesis to deliver data-driven recommendations."
    - Customize to focus on specific features, business questions, or analytical approaches
-3. **Click "Start Deep Dive"** to begin (analysis takes 4-5 minutes, powered by GPT-5-mini with reasoningEffort: 'medium')
+3. **Click "Start Deep Dive"** to begin (analysis takes 5-10 minutes, powered by GPT-5-mini with reasoningEffort: 'medium')
 
 **Deep Dive Workflow (AI Budget: 50 Steps, Adaptive based on dataset complexity)**
 
@@ -497,7 +497,7 @@ Analyze subscription trends by month and day. Identify optimal contact timing pa
   - Runs SQL queries to analyze your data
   - Generates relevant visualizations
   - Provides concise insights
-- Switch to **Deep Dive mode** for exhaustive analysis (50-step system max, 4-5 minutes):
+- Switch to **Deep Dive mode** for exhaustive analysis (50-step system max, 5-10 minutes):
   - Click "Deep Dive" button in chat header
   - Customize the analysis prompt if needed
   - Get comprehensive insights (see [Technical Specifications](#technical-specifications))
@@ -667,9 +667,9 @@ The application implements multiple layers of security to protect against common
 - **No Information Disclosure**: Generic error messages in production mode
 
 #### Timeout Protection
-- Route timeout: 300 seconds (5 minutes for entire analysis session)
+- Route timeout: 600 seconds (10 minutes for entire analysis session, requires Vercel Pro with Fluid Compute)
 - Individual query timeouts: 30s (normal mode), 60s (deep dive mode)
-- Deep dive analysis typically completes in 4-5 minutes (within timeout limit)
+- Deep dive analysis typically completes in 5-10 minutes (within timeout limit)
 
 #### Rate Limiting & Resource Protection
 - **PostgreSQL-Based Rate Limiting**: Free, serverless-friendly rate limiting without external services

@@ -7,7 +7,19 @@
     }
   ],
   "functions": {
+    "app/api/chat/[datasetId]/route.ts": {
+      "maxDuration": 600,
+      "memory": 1024
+    },
     "app/api/ingest/route.ts": {
+      "maxDuration": 120,
+      "memory": 1024
+    },
+    "app/api/report/generate/route.ts": {
+      "maxDuration": 90,
+      "memory": 1024
+    },
+    "app/api/datasets/cleanup/route.ts": {
       "maxDuration": 60,
       "memory": 1024
     }

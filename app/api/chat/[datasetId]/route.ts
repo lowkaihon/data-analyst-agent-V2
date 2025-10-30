@@ -6,8 +6,6 @@ import { buildDeepDiveSystemPrompt, buildNormalModePrompt } from "@/lib/prompts/
 import { createSQLQueryTool } from "@/lib/ai-tools/sql-query-tool"
 import { createChartTool } from "@/lib/ai-tools/chart-tool"
 
-export const maxDuration = 300
-
 export async function POST(req: Request, { params }: { params: Promise<{ datasetId: string }> }) {
   try {
     console.log("Chat API route called")

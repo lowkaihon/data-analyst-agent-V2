@@ -366,7 +366,7 @@ export function ChatPanel({ datasetId, onGenerateReport, isGeneratingReport, onS
             <DialogDescription>
               Deep dive starts with fresh conversation context for unbiased comprehensive analysis. All SQL queries and charts remain accessible in their tabs.
               <br /><br />
-              The analysis performs 20-30 SQL queries exploring individual dimensions, multi-way interactions, cross-validations, and hypothesis testing. It typically generates 5-7 high-impact visualizations and may take 4-5 minutes to complete.
+              The analysis performs 20-30 SQL queries exploring individual dimensions, multi-way interactions, cross-validations, and hypothesis testing. It typically generates 5-7 high-impact visualizations and may take 5-10 minutes to complete.
               <br /><br />
               Customize the prompt below to guide the analysis focus (e.g., &quot;Focus on customer retention patterns&quot; or &quot;Prioritize seasonal trends&quot;).
             </DialogDescription>
