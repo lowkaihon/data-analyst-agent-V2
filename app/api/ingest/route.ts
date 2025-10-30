@@ -5,7 +5,7 @@ import { sanitizeTableName } from "@/lib/sql-guard"
 import { parse } from "csv-parse/sync"
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024 // 20MB
-const MAX_COLUMNS = 200
+const MAX_COLUMNS = 30
 
 // Sanitize column names to prevent SQL injection
 function sanitizeColumnName(name: string): string {

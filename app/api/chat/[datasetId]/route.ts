@@ -1108,113 +1108,7 @@ Format your response with:
     }
 
     // Engineered the AI prompt based on GPT-5-mini (low reasoning) best practices
-    const deepDiveSystemPrompt = 
-/*    
-`<role>
-Data analyst performing comprehensive analysis.${dataset.user_context ? `
-Context: "${dataset.user_context}"` : ''}
-</role>
-
-<dataset>
-Table: \`${dataset.table_name}\`
-Rows: ${dataset.row_count}, Columns: ${dataset.column_count}
-</dataset>
-
-<task>
-Goal: Deliver comprehensive analysis with 3-5 actionable insights backed by strong evidence.
-
-"Comprehensive" means exploring until additional queries would yield only marginal new insights. This typically requires 20-30 steps covering:
-- Obvious patterns and hidden interactions
-- Major segments and surprising edge cases
-- Initial findings and validation queries
-
-Step budget: 30 steps available. Keep exploring until you've covered:
-- Single dimensions (individual columns)
-- Cross-tabulations: When single dimensions show large variance within categories, multiple strong predictors, or surprising outliers → test interactions between them
-- Interaction validation: Test if high-performing patterns are driven by feature combinations
-- Validation queries (test surprising findings)
-
-This depth typically requires 20-30 steps.
-
-Important: executeSQLQuery and createChart must be called sequentially. Always call executeSQLQuery first, wait for the queryId in the response, then call createChart with that queryId in a subsequent step.
-
-IMPORTANT: You are starting fresh with this deep-dive analysis. Previous chat history is not available. Focus on the dataset and user's stated objectives.
-</task>
-
-<exploration_approach>
-After covering single dimensions, let findings guide next exploration:
-
-Triggers for cross-tabulations:
-- Large variance within a category → drill into why (test with other features)
-- Multiple strong predictors identified → test if they interact
-- Surprising outliers or anomalies → validate with cross-tabulations
-- High-performing segment found → confirm it's not driven by confounding feature
-
-Create visualizations for key findings:
-- Each strong predictor (distribution or comparison chart)
-- Important cross-tabulations (grouped/colored charts)
-- Surprising outliers or anomalies (highlight with scatter/boxplot)
-- Temporal trends if time dimension exists
-
-Continue until major patterns are validated through interactions and visualized.
-</exploration_approach>
-
-<tools>
-executeSQLQuery: Execute SELECT query against dataset. Returns {success, queryId, rowCount, preview, analysis}. Use 'analysis' field for insights from full results.
-
-createChart: Generate Vega-Lite visualization from queryId. Automatically fetches optimal data amount per chart type.
-Chart types: bar (comparisons), line (trends), scatter (correlations), boxplot (distributions), area (cumulative), pie (proportions), heatmap (2D patterns).
-Returns {success, chartSpec, error}.
-</tools>
-
-<sql_rules>
-PostgreSQL dialect - SELECT only against \`${dataset.table_name}\`:
-
-1. CTE Usage: Use CTE named 'base' for CASE expressions or derived fields, then SELECT from base (never from original table). If CTE uses aggregation (COUNT, SUM, AVG, MIN, MAX), it MUST have GROUP BY clause.
-2. Grouping: GROUP BY using ordinals (1,2,3) or CTE alias names. Never GROUP BY same-query SELECT aliases.
-3. Query Limits: Always end with LIMIT ≤ 1500. Never use semicolons.
-4. Functions: String concat (||), dates (DATE_TRUNC, EXTRACT, TO_TIMESTAMP, ::date), conditional aggregations (FILTER WHERE).
-5. Date Constraints: Never use Oracle functions (to_date). Never cast temporal types to integers. Use EXTRACT(MONTH/YEAR FROM col) for numeric date components.
-6. Rate Calculations: Use AVG(CASE WHEN condition THEN 1.0 ELSE 0.0 END). Prevent divide-by-zero with NULLIF.
-7. Reserved Words: Quote reserved columns ("default", "user", "order") or alias in base CTE (SELECT "default" AS is_default).
-8. Filtering: Use WHERE to filter rows before aggregation. Use HAVING to filter aggregated results.
-9. Custom Sort: Add order column in base CTE, or use ARRAY_POSITION(ARRAY['A','B'], col). For months: ARRAY_POSITION(ARRAY['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'], LOWER(month_col)).
-10. Boolean Handling: Treat boolean columns as boolean. Use CASE WHEN bool_col THEN 1.0 ELSE 0.0 END or bool_col IS TRUE. Never compare booleans to numbers/strings or use IN (...) with mixed types.
-</sql_rules>
-
-<output_format>
-Deliver analysis in two sections:
-
-=== EXECUTIVE SUMMARY ===
-3-5 key insights with evidence inline (max 10 sentences).
-
-See Charts tab for visualizations and SQL tab for detailed queries.
-
-You might also explore:
-[3 follow-up questions]
-
-=== DETAILED ANALYSIS ===
-
-Structure detailed analysis with these sections:
-
-Key Findings:
-[Numbered list with evidence, metrics, sample sizes]
-
-Validation & Hypothesis Tests:
-[Numbered list of checks and results]
-
-Standout Segments:
-[Numbered list with size and key metrics]
-
-Limitations & Data Quality:
-[Numbered list of caveats and data issues]
-
-Use plain text with numbered lists. No markdown formatting.
-STOP after detailed analysis - do not add recommendations or other sections.
-</output_format>` */
-
-
-`<role>
+    const deepDiveSystemPrompt = `<role>
 Data analyst performing comprehensive analysis.${dataset.user_context ? `
 Context: "${dataset.user_context}"` : ''}
 </role>
@@ -1227,10 +1121,6 @@ Rows: ${dataset.row_count}, Columns: ${dataset.column_count}
 <task>
 Conduct a thorough, exhaustive analysis of this dataset using SQL queries and visualizations.
 
-IMPORTANT: You are starting fresh with this deep-dive analysis. Previous chat history is not available. The user has provided all necessary context in their request above. Focus on the dataset and user's stated objectives.
-
-This is a comprehensive analysis requiring multiple rounds of exploration, validation, and hypothesis testing—not a quick summary.
-
 Step budget: You have 30 steps available. Typical comprehensive analysis uses 20-30 steps.
 </task>
 
@@ -1238,15 +1128,13 @@ Step budget: You have 30 steps available. Typical comprehensive analysis uses 20
 Analysis is complete when ALL requirements are met:
 
 Required Deliverables:
-□ 5-7 high-impact visualizations covering major distributions, trends, and key patterns
-□ 3-5 actionable insights with strong quantitative evidence (sample sizes, metrics, comparisons)
-□ Key claims validated through confirmation queries
+□ Major dimension interactions explored
 □ Significant outliers, patterns, and anomalies investigated
 □ Standout segments identified with detailed breakdowns
 □ Hypotheses tested across relevant subgroups and dimensions
-□ Major dimension interactions explored
-
-Stop when additional queries yield diminishing insights.
+□ 3-5 actionable insights with strong quantitative evidence (sample sizes, metrics, comparisons)
+□ Key claims validated through confirmation queries
+□ 5-7 high-impact visualizations covering major distributions, trends, and key patterns
 </success_criteria>
 
 <analysis_approach>
@@ -1317,8 +1205,6 @@ Limitations & Data Quality:
 </constraints>
 
 </output_format>`
-
-
 
     // Normal Mode
     // Engineered the AI prompt based on GPT-4o best practices

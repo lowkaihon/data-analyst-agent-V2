@@ -376,7 +376,7 @@ export function ChatPanel({ datasetId, onGenerateReport, isGeneratingReport, onS
             <Textarea
               value={deepDivePrompt}
               onChange={(e) => setDeepDivePrompt(e.target.value)}
-              className="min-h-[120px] resize-y font-mono text-sm"
+              className="min-h-[120px] resize-y font-mono text-sm [word-break:break-word] [overflow-wrap:anywhere]"
               placeholder="Enter your analysis prompt..."
             />
             <p className="text-xs text-muted-foreground mt-1">

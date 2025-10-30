@@ -44,8 +44,10 @@ export function VegaLiteChart({ spec, className }: VegaLiteChartProps) {
           ...((spec as any).config?.view || {}),
           continuousWidth: 550, // Default width when container can't be determined
         },
+        // Provide fallback axis formatting that encoding-level can override
         axisX: {
           ...((spec as any).config?.axisX || {}),
+          // Default rotation for readability (encoding-level takes precedence)
           labelAngle: -45,
           labelAlign: "right" as const,
         },

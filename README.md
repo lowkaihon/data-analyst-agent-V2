@@ -445,7 +445,7 @@ Analyze subscription trends by month and day. Identify optimal contact timing pa
 ### 1. Upload Your Data
 - Navigate to the home page
 - Optionally provide context about your data in the textarea
-- Upload a CSV file (≤20MB, ≤200 columns)
+- Upload a CSV file (≤20MB, ≤30 columns)
 - The system creates a Postgres table and infers column types
 - **Privacy Note**: Your data is automatically deleted after 24 hours
 
@@ -485,7 +485,7 @@ The application uses an optimized batch ingestion system with enterprise-grade r
    - File extension validation (.csv only)
    - Size limit: 20MB maximum
    - Empty file rejection
-   - Column limit: 200 columns maximum
+   - Column limit: 30 columns maximum
    - Multi-delimiter support: comma, semicolon, tab
 
 2. **Column Name Sanitization**:
@@ -603,7 +603,7 @@ The application implements multiple layers of security to protect against common
   - File extension validation (.csv only)
   - Size limit: 20MB maximum
   - Empty file rejection
-  - Column limit: 200 columns maximum
+  - Column limit: 30 columns maximum
 
 #### Infrastructure Security
 - **HTTP Security Headers** (via next.config.mjs):

@@ -4,14 +4,14 @@ import type React from "react"
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Upload, Github } from "lucide-react"
+import { Upload, Github, ExternalLink } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024 // 20MB
-const MAX_COLUMNS = 200
+const MAX_COLUMNS = 30
 
 export default function UploadPage() {
   const router = useRouter()
@@ -150,7 +150,7 @@ export default function UploadPage() {
                 <div className="flex flex-col items-center gap-1 text-center">
                   <p className="text-lg font-medium">Upload CSV File</p>
                   <p className="text-sm text-muted-foreground">Drag and drop your CSV file here, or click to browse</p>
-                  <p className="text-xs text-muted-foreground">Maximum file size: 20MB, Maximum columns: 200</p>
+                  <p className="text-xs text-muted-foreground">Maximum file size: 20MB, Maximum columns: 30</p>
                 </div>
                 <Button type="button" variant="outline" onClick={() => document.getElementById("file-input")?.click()}>
                   Choose File
@@ -186,6 +186,22 @@ export default function UploadPage() {
                   </ul>
                 </div>
               </div>
+            </div>
+
+            {/* Kaggle Dataset Link */}
+            <div className="flex items-center justify-center gap-2 rounded-md bg-accent/50 px-4 py-3 text-sm">
+              <ExternalLink className="h-4 w-4 text-muted-foreground" />
+              <span className="text-muted-foreground">
+                Don't have a dataset?{" "}
+                <a
+                  href="https://www.kaggle.com/datasets/sushant097/bank-marketing-dataset-full"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-foreground underline underline-offset-4 hover:text-primary"
+                >
+                  Download this sample Bank Marketing dataset from Kaggle
+                </a>
+              </span>
             </div>
 
             <Button type="submit" disabled={!file || isUploading} className="w-full">
