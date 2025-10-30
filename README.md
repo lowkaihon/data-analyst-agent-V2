@@ -29,7 +29,7 @@ Scaffolded with Vercel v0; productionized with Next.js 16 + Supabase/Postgres. U
 - **Contextual Insights**: Understands dataset context and suggests follow-up questions for further exploration
 
 ### 🔒 Privacy & Data Protection
-- **Automatic Cleanup**: All uploaded datasets deleted after 24 hours (Vercel Cron every 6 hours)
+- **Automatic Cleanup**: All uploaded datasets deleted after 24 hours (Vercel Cron daily at 2am UTC)
 - **Session Isolation**: Complete user isolation via Row Level Security (RLS)
 - **No Persistent Storage**: Data never stored permanently - automatic cleanup enforced
 - **Anonymous Authentication**: Privacy without requiring user accounts
@@ -667,7 +667,7 @@ The application implements multiple layers of security to protect against common
 
 #### Data Retention & Privacy
 - **Automatic Cleanup**: Datasets deleted after 24 hours via Vercel Cron
-  - Cron schedule: Every 6 hours (`0 */6 * * *`)
+  - Cron schedule: Once daily at 2am UTC (`0 2 * * *`)
   - Endpoint: `/api/datasets/cleanup`
   - Protected by Vercel Cron user-agent verification
 - **Complete Deletion**: Drops dataset tables + cascades all metadata (runs, charts, reports)
@@ -679,7 +679,7 @@ The application implements automatic data cleanup to protect user privacy:
 
 ### Automatic Data Deletion
 - **Retention Period**: All uploaded datasets are automatically deleted after 24 hours
-- **Cleanup Schedule**: Vercel Cron runs every 6 hours (`0 */6 * * *`) to remove expired data
+- **Cleanup Schedule**: Vercel Cron runs once daily at 2am UTC (`0 2 * * *`) to remove expired data
 - **What Gets Deleted**:
   - Dataset tables (`ds_<datasetId>`)
   - Metadata records (datasets, chat_turns, runs, reports) via CASCADE
@@ -798,13 +798,13 @@ The application uses Vercel Cron for automated data cleanup:
   "crons": [
     {
       "path": "/api/datasets/cleanup",
-      "schedule": "0 */6 * * *"
+      "schedule": "0 2 * * *"
     }
   ]
 }
 ```
 
-**Schedule**: Runs every 6 hours (at minute 0: 12am, 6am, 12pm, 6pm UTC)
+**Schedule**: Runs once daily at 2am UTC (with ±59 minute variance on Hobby plan)
 
 **Purpose**: Automatically deletes datasets older than 24 hours
 

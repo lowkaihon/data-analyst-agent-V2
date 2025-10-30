@@ -3,7 +3,7 @@
   "crons": [
     {
       "path": "/api/datasets/cleanup",
-      "schedule": "0 */6 * * *"
+      "schedule": "0 2 * * *"
     }
   ]
 }
