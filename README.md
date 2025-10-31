@@ -6,6 +6,19 @@ An AI-powered data analysis platform that enables interactive exploration of CSV
 
 Scaffolded with Vercel v0; productionized with Next.js 16 + Supabase/Postgres. Used AI pair-programming (Claude Code) to accelerate refactors.
 
+## Demo
+
+<!--
+TO ADD VIDEO:
+1. Go to GitHub and click "Edit" on this README.md
+2. Place cursor on the line below
+3. Drag and drop your demo.mp4 file here
+4. GitHub will auto-upload and generate a video embed URL
+5. Delete this comment after uploading
+-->
+
+[VIDEO PLACEHOLDER - Upload demo.mp4 via GitHub web interface]
+
 ## Features
 
 ### 🤖 AI-Powered Analysis
@@ -71,6 +84,11 @@ Generate comprehensive business intelligence reports powered by GPT-5 using data
 - **Key Findings**: Discoveries with specific data, concrete numbers, and evidence
 - **Actionable Recommendations**: Structured recommendations with priority levels, expected impact, and success metrics
 - **Methodology & Limitations**: Analysis approach, data quality issues, and assumptions
+
+**Performance:**
+- Route timeout: 400 seconds (~6.7 minutes) configured in `vercel.json`
+- Handles large context (up to 50 artifacts with 50K-100K tokens)
+- GPT-5 synthesis may take 3-5 minutes for comprehensive reports
 
 **Export**: Download as markdown for sharing with stakeholders or documentation
 
@@ -557,6 +575,12 @@ The application uses an optimized batch ingestion system with enterprise-grade r
    - Orphaned dataset records are cleaned up
    - Detailed error messages returned to client
 
+7. **Timeout Protection**:
+   - Route timeout: 180 seconds (3 minutes) configured in `vercel.json`
+   - Accommodates worst-case scenario: 20 MB file, 30 columns, ~200,000 rows
+   - Batch inserts may require 100+ database round trips (0.5-0.7s each)
+   - Provides 2-3x safety margin for database load and network latency
+
 **Example**: A CSV with 150 columns will use batch size of 400 rows (60,000 ÷ 150 = 400), while a CSV with 10 columns will use the maximum batch size of 1,000 rows.
 
 ### Data Flow (Reference-Based Pattern)
@@ -667,7 +691,10 @@ The application implements multiple layers of security to protect against common
 - **No Information Disclosure**: Generic error messages in production mode
 
 #### Timeout Protection
-- Route timeout: 600 seconds (10 minutes for entire analysis session, requires Vercel Pro with Fluid Compute)
+- **Chat route timeout**: 600 seconds (10 minutes for entire analysis session, requires Vercel Pro with Fluid Compute)
+- **Ingest route timeout**: 180 seconds (3 minutes for CSV upload and table creation)
+- **Report generation timeout**: 400 seconds (~6.7 minutes for GPT-5 synthesis)
+- **Cleanup route timeout**: 60 seconds (1 minute for cron job)
 - Individual query timeouts: 30s (normal mode), 60s (deep dive mode)
 - Deep dive analysis typically completes in 5-10 minutes (within timeout limit)
 
@@ -846,11 +873,19 @@ The application uses Vercel Cron for automated data cleanup:
       "path": "/api/datasets/cleanup",
       "schedule": "0 2 * * *"
     }
-  ]
+  ],
+  "functions": {
+    "app/api/datasets/cleanup/route.ts": {
+      "maxDuration": 60,
+      "memory": 1024
+    }
+  }
 }
 ```
 
 **Schedule**: Runs once daily at 2am UTC (with ±59 minute variance on Hobby plan)
+
+**Timeout**: 60 seconds (1 minute) for dropping tables and cascading metadata deletes
 
 **Purpose**: Automatically deletes datasets older than 24 hours
 
@@ -878,3 +913,7 @@ Note: Manual testing bypasses the Vercel Cron user-agent check in development mo
 ## Contributing
 
 Contributions are welcome! Please open an issue or submit a pull request.
+
+## Credits
+
+- Analysis icon created by [HAJICON - Flaticon](https://www.flaticon.com/free-icons/analysis)
