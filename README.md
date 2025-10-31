@@ -8,16 +8,7 @@ Scaffolded with Vercel v0; productionized with Next.js 16 + Supabase/Postgres. U
 
 ## Demo
 
-<!--
-TO ADD VIDEO:
-1. Go to GitHub and click "Edit" on this README.md
-2. Place cursor on the line below
-3. Drag and drop your demo.mp4 file here
-4. GitHub will auto-upload and generate a video embed URL
-5. Delete this comment after uploading
--->
-
-[VIDEO PLACEHOLDER - Upload demo.mp4 via GitHub web interface]
+https://github.com/user-attachments/assets/cf6bd351-d4d7-4154-bcd9-2ac43fc27ba6
 
 ## Features
 
