@@ -18,12 +18,12 @@ https://github.com/user-attachments/assets/cf6bd351-d4d7-4154-bcd9-2ac43fc27ba6
 
 | Component | Configuration | Details |
 |-----------|--------------|---------|
-| **Normal Mode** | GPT-4o | 10 steps max, 1-3 queries typical, judgment-based charts |
+| **Normal Mode** | GPT-4o-mini | 10 steps max, 1-3 queries typical, judgment-based charts |
 | **Deep Dive Mode** | GPT-5-mini (reasoningEffort: 'medium') | 50 steps max (system buffer), 20-30 SQL queries expected, 5-7 visualizations, 5-10 minute duration |
 | **SQL Sub-Agent** | GPT-4o-mini | Analyzes full query results (up to 100 rows), cost-effective |
 | **Report Generation** | GPT-5 | High-quality synthesis from pinned artifacts |
 
-- **Multi-Model Architecture**: Uses GPT-4o for normal mode and GPT-5-mini (reasoningEffort: 'medium') for deep dive mode. Uses GPT-4o-mini for SQL subagent (fast, cost-effective analysis of full query results). Uses GPT-5 for report generation.
+- **Multi-Model Architecture**: Uses GPT-4o-mini for normal mode and GPT-5-mini (reasoningEffort: 'medium') for deep dive mode. Uses GPT-4o-mini for SQL subagent (fast, cost-effective analysis of full query results). Uses GPT-5 for report generation.
 - **Dual-Mode Architecture**: Normal mode (focused Q&A with scope discipline) + Deep dive mode (agentic reasoning for comprehensive exploration)
 - **Multi-Step Tool Calling**: See [Technical Specifications](#technical-specifications) table above for query depths and step limits
 - **Focused Answers**: Normal mode answers exactly what's asked without unsolicited exploration. Deep dive mode proactively investigates spikes, outliers, and patterns
@@ -176,7 +176,7 @@ These optimizations reduce CPU time by 60-80% during deep dive sessions with 40 
 
 ## AI Modes
 
-### Normal Mode (GPT-4o, 10 steps)
+### Normal Mode (GPT-4o-mini, 10 steps)
 
 Normal mode is engineered for focused Q&A with strict scope discipline. It answers your specific question efficiently and stops.
 
@@ -578,7 +578,7 @@ The application uses an optimized batch ingestion system with enterprise-grade r
 1. **CSV Upload** → Parsed and inserted into Postgres table `ds_<datasetId>` using optimized batch pipeline
 2. **User Question** → AI agent processes user questions using appropriate mode strategy
 3. **Tool Execution Loop** (see [Technical Specifications](#technical-specifications) for model assignments and step counts):
-   - **Normal mode** (GPT-4o): `stepCountIs(10)` for focused analysis
+   - **Normal mode** (GPT-4o-mini): `stepCountIs(10)` for focused analysis
    - **Deep dive mode** (GPT-5-mini with reasoningEffort: 'medium'): `stepCountIs(50)` with adaptive scope based on column count
    - **Tools** (detailed specifications in [AI Tools](#ai-tools-server-side) section):
      - **executeSQLQuery**: Executes queries, stores full results in DB, returns 5-row preview + queryId + AI analysis

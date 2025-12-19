@@ -193,7 +193,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
     // Normal Mode - prompt is now imported from lib/prompts/chat-prompts.ts
     const systemPrompt = buildNormalModePrompt(dataset)
     const result = streamText({
-      model: openai(isDeepDive ? "gpt-5-mini" : "gpt-4o"),
+      model: openai(isDeepDive ? "gpt-5-mini" : "gpt-4o-mini"),
       system: isDeepDive ? deepDiveSystemPrompt : systemPrompt,
       messages: convertToModelMessages(messages),
       tools,
