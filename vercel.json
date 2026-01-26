@@ -4,6 +4,10 @@
     {
       "path": "/api/datasets/cleanup",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/keep-alive",
+      "schedule": "0 3 * * *"
     }
   ],
   "functions": {
@@ -22,6 +26,10 @@
     "app/api/datasets/cleanup/route.ts": {
       "maxDuration": 60,
       "memory": 1024
+    },
+    "app/api/keep-alive/route.ts": {
+      "maxDuration": 10,
+      "memory": 128
     }
   }
 }
