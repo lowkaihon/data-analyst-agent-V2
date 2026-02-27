@@ -148,10 +148,10 @@ export function assessQueryComplexity(sql: string): { allowed: boolean; reason?:
     return { allowed: false, reason: "Too many JOINs (max 3)" }
   }
 
-  // Check for nested subqueries
-  const selectCount = (upperSQL.match(/\bSELECT\b/g) || []).length
-  if (selectCount > 3) {
-    return { allowed: false, reason: "Too many nested subqueries (max 2 nested)" }
+  // Check for nested subqueries (SELECT inside parentheses, not UNION members)
+  const subqueryCount = (upperSQL.match(/\(\s*SELECT\b/g) || []).length
+  if (subqueryCount > 2) {
+    return { allowed: false, reason: "Too many nested subqueries (max 2)" }
   }
 
   return { allowed: true }

@@ -276,7 +276,7 @@ Use professional markdown formatting:
 </FORMATTING>`
 
     const result = await generateText({
-      model: openai("gpt-5"),
+      model: openai("gpt-5.2"),
       system: systemPrompt,
       prompt: `Generate a comprehensive analysis report for the dataset "${dataset.table_name}"${dataset.user_context ? ` with context: "${dataset.user_context}"` : ""}.`,
     })

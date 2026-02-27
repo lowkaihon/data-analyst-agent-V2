@@ -167,12 +167,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
       messages: convertToModelMessages(messages),
       tools,
       stopWhen: stepCountIs(isDeepDive ? 50 : 10),  // Deep dive: supports 22-35 queries + 6-7 charts (28-42 tool calls) with comfortable buffer. Normal: responsive Q&A (10 steps).
-      // Only apply reasoningEffort for reasoning models
-      providerOptions: {
-        openai: {
-          reasoningEffort: 'medium'
+      // Only apply reasoning options for deep-dive mode (gpt-5-mini).
+      // store: false sends full items instead of item_reference, avoiding
+      // the "reasoning item without required following item" pairing bug.
+      ...(isDeepDive && {
+        providerOptions: {
+          openai: {
+            reasoningEffort: 'medium',
+            store: false,
+          }
         }
-      },
+      }),
       onStepFinish: ({ toolCalls, toolResults }) => {
         console.log("Step finished", isDeepDive ? `(Deep Dive)` : "")
         if (toolCalls) {
