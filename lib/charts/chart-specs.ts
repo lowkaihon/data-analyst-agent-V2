@@ -61,7 +61,7 @@ export async function buildChartSpec(params: ChartParams): Promise<ChartResult> 
                      && !isNaN(Date.parse(sampleValue))
                      && isNaN(Number(sampleValue))
                      && !/[<>+]/.test(sampleValue)           // Reject <, >, +
-                     && !/^\d+\s*-\s*\d+/.test(sampleValue)  // Reject numeric ranges
+                     && /^\d{4}-\d{2}/.test(sampleValue)     // Require ISO-like YYYY-MM minimum
 
   // Enhanced type detection for x-axis: distinguish discrete integer sequences from continuous numeric data
   let xType: string
@@ -515,12 +515,17 @@ export async function buildChartSpec(params: ChartParams): Promise<ChartResult> 
     // If colorField is specified, use it; otherwise use yField as the value
     const valueField = colorField || yField
 
-    // Check if we have numeric values for the heatmap cells
+    // Check if we have numeric values for the heatmap cells (sample multiple rows for robustness)
     // Note: PostgreSQL NUMERIC/DECIMAL types may return as strings to preserve precision
-    const sampleValue = data[0]?.[valueField]
-    const numericValue = typeof sampleValue === 'string' ? parseFloat(sampleValue) : sampleValue
+    const sampleSize = Math.min(5, data.length)
+    const hasNumericValue = data.slice(0, sampleSize).some(row => {
+      const val = row[valueField]
+      if (val === null || val === undefined) return false
+      const num = typeof val === 'string' ? parseFloat(val) : val
+      return typeof num === 'number' && !isNaN(num)
+    })
 
-    if (typeof numericValue !== "number" || isNaN(numericValue)) {
+    if (!hasNumericValue) {
       return {
         success: false,
         error: `Heatmap requires a quantitative value field for color encoding. The field '${valueField}' does not contain numeric values. Please ensure your query includes a numeric aggregation (e.g., COUNT(*), AVG(...), SUM(...)) and specify it via colorField parameter.`

@@ -29,33 +29,22 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // Get the current session
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
+  // getUser() validates server-side and handles token refresh automatically.
+  // Unlike getSession(), it doesn't trust the cookie blindly.
+  const { data: { user } } = await supabase.auth.getUser()
 
-  // If there's no session, create an anonymous user
-  if (!session) {
-    const { data, error } = await supabase.auth.signInAnonymously()
+  if (!user) {
+    // Only create anonymous session if no auth cookies exist (truly new visitor).
+    // If cookies exist but validation failed (network error, concurrent refresh, etc.),
+    // don't replace the session — avoids orphaning the user's datasets.
+    const hasAuthCookies = request.cookies.getAll().some(
+      c => c.name.startsWith('sb-') && c.name.includes('auth-token')
+    )
 
-    if (error) {
-      console.error('Failed to create anonymous session:', error)
-    } else {
-      console.log('Created anonymous session:', data.user?.id)
-    }
-  } else {
-    // Check if session is about to expire (within 1 hour)
-    const expiresAt = session.expires_at ? new Date(session.expires_at * 1000) : null
-    const now = new Date()
-    const oneHour = 60 * 60 * 1000
-
-    if (expiresAt && expiresAt.getTime() - now.getTime() < oneHour) {
-      // Refresh session
-      const { error } = await supabase.auth.refreshSession()
+    if (!hasAuthCookies) {
+      const { error } = await supabase.auth.signInAnonymously()
       if (error) {
-        console.error('Failed to refresh session:', error)
-      } else {
-        console.log('Session refreshed successfully')
+        console.error('Failed to create anonymous session:', error)
       }
     }
   }

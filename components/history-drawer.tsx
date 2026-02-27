@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { History, Search, Copy, Pin, PinOff } from "lucide-react"
 import { VegaLiteChart } from "@/components/vega-lite-chart"
 import type { Run } from "@/lib/types"
+import { togglePin } from "@/lib/utils"
 
 interface HistoryDrawerProps {
   datasetId: string
@@ -67,19 +68,7 @@ export function HistoryDrawer({ datasetId }: HistoryDrawerProps) {
     setFilteredRuns(filtered)
   }
 
-  const handleTogglePin = async (runId: string, currentPinned: boolean) => {
-    try {
-      await fetch(`/api/runs/${runId}/pin`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pinned: !currentPinned }),
-      })
-
-      setRuns((prev) => prev.map((run) => (run.id === runId ? { ...run, pinned: !currentPinned } : run)))
-    } catch (err) {
-      console.error("Failed to toggle pin:", err)
-    }
-  }
+  const handleTogglePin = (runId: string, currentPinned: boolean) => togglePin(runId, currentPinned, setRuns)
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text)

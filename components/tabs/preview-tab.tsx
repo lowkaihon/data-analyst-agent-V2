@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Loader2 } from "lucide-react"
+import { TabLoadingState, TabErrorState } from "@/components/tabs/tab-states"
 
 interface PreviewTabProps {
   datasetId: string
@@ -36,21 +36,8 @@ export function PreviewTab({ datasetId }: PreviewTabProps) {
     fetchPreview()
   }, [datasetId])
 
-  if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-destructive">{error}</p>
-      </div>
-    )
-  }
+  if (loading) return <TabLoadingState />
+  if (error) return <TabErrorState error={error} />
 
   return (
     <div className="flex flex-col h-full">

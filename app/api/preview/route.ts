@@ -1,11 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-
-// Validate table name to prevent SQL injection
-function validateTableName(tableName: string): boolean {
-  // Only allow ds_<uuid with underscores> format (e.g., ds_550e8400_e29b_41d4_a716_446655440000)
-  return /^ds_[a-f0-9_]{36}$/.test(tableName)
-}
+import { validateTableName } from "@/lib/sql-guard"
 
 export async function GET(req: NextRequest) {
   try {

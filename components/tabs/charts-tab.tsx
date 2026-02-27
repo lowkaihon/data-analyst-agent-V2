@@ -4,12 +4,14 @@ import { useEffect, useState } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { Loader2, Pin, AlertTriangle, Copy, ChevronDown, ChevronUp } from "lucide-react"
+import { Pin, AlertTriangle, Copy, ChevronDown, ChevronUp } from "lucide-react"
 import type { Run } from "@/lib/types"
 import { VegaLiteChart } from "@/components/vega-lite-chart"
 import { validateVegaSpec } from "@/lib/vega-validator"
+import { toggleSetItem, togglePin, getRunColumns } from "@/lib/utils"
+import { TabLoadingState, TabErrorState } from "@/components/tabs/tab-states"
+import { RunResultsTable } from "@/components/tabs/run-results-table"
 
 interface ChartsTabProps {
   datasetId: string
@@ -48,63 +50,18 @@ export function ChartsTab({ datasetId, refreshTrigger }: ChartsTabProps) {
     fetchCharts()
   }, [datasetId, refreshTrigger])
 
-  const handleTogglePin = async (runId: string, currentPinned: boolean) => {
-    try {
-      await fetch(`/api/runs/${runId}/pin`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pinned: !currentPinned }),
-      })
+  const handleTogglePin = (runId: string, currentPinned: boolean) => togglePin(runId, currentPinned, setCharts)
 
-      setCharts((prev) => prev.map((chart) => (chart.id === runId ? { ...chart, pinned: !currentPinned } : chart)))
-    } catch (err) {
-      console.error("Failed to toggle pin:", err)
-    }
-  }
+  const toggleSQLExpanded = (chartId: string) => toggleSetItem(setExpandedSQL, chartId)
 
-  const toggleSQLExpanded = (chartId: string) => {
-    setExpandedSQL((prev) => {
-      const newSet = new Set(prev)
-      if (newSet.has(chartId)) {
-        newSet.delete(chartId)
-      } else {
-        newSet.add(chartId)
-      }
-      return newSet
-    })
-  }
-
-  const toggleDataExpanded = (chartId: string) => {
-    setExpandedData((prev) => {
-      const newSet = new Set(prev)
-      if (newSet.has(chartId)) {
-        newSet.delete(chartId)
-      } else {
-        newSet.add(chartId)
-      }
-      return newSet
-    })
-  }
+  const toggleDataExpanded = (chartId: string) => toggleSetItem(setExpandedData, chartId)
 
   const handleCopySQL = (sql: string) => {
     navigator.clipboard.writeText(sql)
   }
 
-  if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-destructive">{error}</p>
-      </div>
-    )
-  }
+  if (loading) return <TabLoadingState />
+  if (error) return <TabErrorState error={error} />
 
   return (
     <ScrollArea className="h-full">
@@ -123,6 +80,7 @@ export function ChartsTab({ datasetId, refreshTrigger }: ChartsTabProps) {
             {charts.map((chart, index) => {
               // Calculate chart number: oldest = 1, newest = totalCount
               const chartNumber = totalCount - index
+              const columns = getRunColumns(chart)
 
               // Validate spec for security before rendering
               const validation = chart.chart_spec ? validateVegaSpec(chart.chart_spec) : { isValid: false, error: "No spec available" }
@@ -194,63 +152,14 @@ export function ChartsTab({ datasetId, refreshTrigger }: ChartsTabProps) {
 
                     {/* Data Results Section */}
                     {chart.sample && Array.isArray(chart.sample) && chart.sample.length > 0 && (
-                      <Collapsible
-                        open={expandedData.has(chart.id)}
-                        onOpenChange={() => toggleDataExpanded(chart.id)}
-                        className="mt-3"
-                      >
-                        <CollapsibleTrigger asChild>
-                          <Button variant="outline" size="sm" className="w-full">
-                            {expandedData.has(chart.id) ? (
-                              <ChevronUp className="mr-2 h-4 w-4" />
-                            ) : (
-                              <ChevronDown className="mr-2 h-4 w-4" />
-                            )}
-                            {expandedData.has(chart.id) ? "Hide" : "View"} Data ({chart.sample.length} rows)
-                          </Button>
-                        </CollapsibleTrigger>
-                        <CollapsibleContent className="mt-2">
-                          <div className="rounded border">
-                            <Table>
-                              <TableHeader>
-                                <TableRow>
-                                  {(() => {
-                                    const columns = chart.columns && chart.columns.length > 0
-                                      ? chart.columns
-                                      : Object.keys(chart.sample[0])
-                                    return columns.map((column) => (
-                                      <TableHead key={column}>{column}</TableHead>
-                                    ))
-                                  })()}
-                                </TableRow>
-                              </TableHeader>
-                              <TableBody>
-                                {(() => {
-                                  const columns = chart.columns && chart.columns.length > 0
-                                    ? chart.columns
-                                    : Object.keys(chart.sample[0])
-                                  return chart.sample.map((row: any, rowIndex: number) => (
-                                    <TableRow key={rowIndex}>
-                                      {columns.map((column) => {
-                                        const value = row[column]
-                                        return (
-                                          <TableCell key={column}>
-                                            {value === null || value === undefined
-                                              ? <span className="text-muted-foreground italic">null</span>
-                                              : typeof value === "object"
-                                                ? JSON.stringify(value)
-                                                : String(value)}
-                                          </TableCell>
-                                        )
-                                      })}
-                                    </TableRow>
-                                  ))
-                                })()}
-                              </TableBody>
-                            </Table>
-                          </div>
-                        </CollapsibleContent>
-                      </Collapsible>
+                      <RunResultsTable
+                        columns={columns}
+                        sample={chart.sample}
+                        rowCountLabel={`${chart.sample.length} rows`}
+                        expanded={expandedData.has(chart.id)}
+                        onToggle={() => toggleDataExpanded(chart.id)}
+                        label="Data"
+                      />
                     )}
 
                     <p className="mt-2 text-xs text-muted-foreground">{new Date(chart.time_iso).toLocaleString()}</p>

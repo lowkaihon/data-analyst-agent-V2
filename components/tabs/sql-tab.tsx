@@ -4,10 +4,11 @@ import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { Loader2, Copy, Pin, ChevronDown, ChevronUp } from "lucide-react"
+import { Copy, Pin } from "lucide-react"
 import type { Run } from "@/lib/types"
+import { toggleSetItem, togglePin, getRunColumns } from "@/lib/utils"
+import { TabLoadingState, TabErrorState } from "@/components/tabs/tab-states"
+import { RunResultsTable } from "@/components/tabs/run-results-table"
 
 interface SQLTabProps {
   datasetId: string
@@ -47,47 +48,12 @@ export function SQLTab({ datasetId, refreshTrigger }: SQLTabProps) {
     navigator.clipboard.writeText(sql)
   }
 
-  const handleTogglePin = async (runId: string, currentPinned: boolean) => {
-    try {
-      await fetch(`/api/runs/${runId}/pin`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pinned: !currentPinned }),
-      })
+  const handleTogglePin = (runId: string, currentPinned: boolean) => togglePin(runId, currentPinned, setRuns)
 
-      setRuns((prev) => prev.map((run) => (run.id === runId ? { ...run, pinned: !currentPinned } : run)))
-    } catch (err) {
-      console.error("Failed to toggle pin:", err)
-    }
-  }
+  const toggleResultsExpanded = (runId: string) => toggleSetItem(setExpandedResults, runId)
 
-  const toggleResultsExpanded = (runId: string) => {
-    setExpandedResults((prev) => {
-      const newSet = new Set(prev)
-      if (newSet.has(runId)) {
-        newSet.delete(runId)
-      } else {
-        newSet.add(runId)
-      }
-      return newSet
-    })
-  }
-
-  if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-destructive">{error}</p>
-      </div>
-    )
-  }
+  if (loading) return <TabLoadingState />
+  if (error) return <TabErrorState error={error} />
 
   return (
     <div className="flex flex-col h-full">
@@ -106,6 +72,7 @@ export function SQLTab({ datasetId, refreshTrigger }: SQLTabProps) {
             {runs.map((run, index) => {
               // Calculate query number: oldest = 1, newest = totalCount
               const queryNumber = totalCount - index
+              const columns = getRunColumns(run)
               return (
                 <Card key={run.id} className="gap-0">
                   <CardHeader>
@@ -143,65 +110,13 @@ export function SQLTab({ datasetId, refreshTrigger }: SQLTabProps) {
                   {run.error && <p className="mt-2 text-xs text-destructive">{run.error}</p>}
 
                   {run.status === "success" && run.sample && Array.isArray(run.sample) && run.sample.length > 0 && (
-                    <Collapsible
-                      open={expandedResults.has(run.id)}
-                      onOpenChange={() => toggleResultsExpanded(run.id)}
-                      className="mt-3"
-                    >
-                      <CollapsibleTrigger asChild>
-                        <Button variant="outline" size="sm" className="w-full">
-                          {expandedResults.has(run.id) ? (
-                            <ChevronUp className="mr-2 h-4 w-4" />
-                          ) : (
-                            <ChevronDown className="mr-2 h-4 w-4" />
-                          )}
-                          {expandedResults.has(run.id) ? "Hide" : "View"} Results ({run.rows} rows)
-                        </Button>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent className="mt-2">
-                        <div className="rounded border">
-                          <Table>
-                            <TableHeader>
-                              <TableRow>
-                                {(() => {
-                                  // Use stored column order if available, otherwise fallback to Object.keys
-                                  const columns = run.columns && run.columns.length > 0
-                                    ? run.columns
-                                    : Object.keys(run.sample[0])
-                                  return columns.map((column) => (
-                                    <TableHead key={column}>{column}</TableHead>
-                                  ))
-                                })()}
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {(() => {
-                                // Use stored column order if available, otherwise fallback to Object.keys
-                                const columns = run.columns && run.columns.length > 0
-                                  ? run.columns
-                                  : Object.keys(run.sample[0])
-                                return run.sample.map((row: any, rowIndex: number) => (
-                                  <TableRow key={rowIndex}>
-                                    {columns.map((column) => {
-                                      const value = row[column]
-                                      return (
-                                        <TableCell key={column}>
-                                          {value === null || value === undefined
-                                            ? <span className="text-muted-foreground italic">null</span>
-                                            : typeof value === "object"
-                                              ? JSON.stringify(value)
-                                              : String(value)}
-                                        </TableCell>
-                                      )
-                                    })}
-                                  </TableRow>
-                                ))
-                              })()}
-                            </TableBody>
-                          </Table>
-                        </div>
-                      </CollapsibleContent>
-                    </Collapsible>
+                    <RunResultsTable
+                      columns={columns}
+                      sample={run.sample}
+                      rowCountLabel={`${run.rows} rows`}
+                      expanded={expandedResults.has(run.id)}
+                      onToggle={() => toggleResultsExpanded(run.id)}
+                    />
                   )}
                 </CardContent>
               </Card>

@@ -63,6 +63,35 @@ function sanitizeCSVValue(value: any): any {
   return value
 }
 
+// Parse CSV with consistent options, varying only the delimiter
+function tryParseCSV(content: string, delimiter: string) {
+  return parse(content, {
+    columns: true,
+    skip_empty_lines: true,
+    trim: true,
+    delimiter,
+    relax_quotes: true,
+    relax_column_count: true,
+    escape: "\\",
+    quote: '"',
+  })
+}
+
+// Clean up temporary storage file (best-effort, never throws)
+async function cleanupStorageFile(storagePath: string): Promise<void> {
+  try {
+    const adminClient = await createAdminClient()
+    const { error: deleteError } = await adminClient.storage.from("csv-uploads").remove([storagePath])
+    if (deleteError) {
+      console.error("Failed to delete storage file:", deleteError)
+    } else {
+      console.log("Deleted temporary storage file:", storagePath)
+    }
+  } catch (cleanupError) {
+    console.error("Storage cleanup error:", cleanupError)
+  }
+}
+
 export async function POST(req: NextRequest) {
   // Declare storagePath outside try block so it's accessible in catch for cleanup
   let storagePath: string | null = null
@@ -163,47 +192,16 @@ export async function POST(req: NextRequest) {
     let records: any[] = []
     let parseError: Error | null = null
 
-    // Try comma first (most common)
-    try {
-      records = parse(fileContent, {
-        columns: true,
-        skip_empty_lines: true,
-        trim: true,
-        delimiter: ",",
-        relax_quotes: true,
-        relax_column_count: true,
-        escape: "\\",
-        quote: '"',
-      })
-    } catch (commaError) {
-      // Try semicolon (common in European locales)
+    // Try delimiters in order: comma (most common), semicolon (European), tab
+    const delimiters = [",", ";", "\t"]
+    for (const delimiter of delimiters) {
       try {
-        records = parse(fileContent, {
-          columns: true,
-          skip_empty_lines: true,
-          trim: true,
-          delimiter: ";",
-          relax_quotes: true,
-          relax_column_count: true,
-          escape: "\\",
-          quote: '"',
-        })
-      } catch (semicolonError) {
-        // Try tab-delimited
-        try {
-          records = parse(fileContent, {
-            columns: true,
-            skip_empty_lines: true,
-            trim: true,
-            delimiter: "\t",
-            relax_quotes: true,
-            relax_column_count: true,
-            escape: "\\",
-            quote: '"',
-          })
-        } catch (tabError) {
-          parseError = commaError as Error
-        }
+        records = tryParseCSV(fileContent, delimiter)
+        parseError = null
+        break
+      } catch (err) {
+        // Keep the first error (comma) as it's the most common format
+        if (!parseError) parseError = err as Error
       }
     }
 
@@ -349,8 +347,8 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Infer column types from first 100 rows (using sanitized records)
-    const sampleSize = Math.min(100, sanitizedRecords.length)
+    // Infer column types from first 500 rows (using sanitized records)
+    const sampleSize = Math.min(500, sanitizedRecords.length)
     const columnTypes = inferColumnTypes(sanitizedRecords.slice(0, sampleSize))
 
     const pool = getPostgresPool()
@@ -443,19 +441,7 @@ export async function POST(req: NextRequest) {
 
     // Cleanup: Delete temporary file from storage (if it was a storage upload)
     if (storagePath) {
-      try {
-        const adminClient = await createAdminClient()
-        const { error: deleteError } = await adminClient.storage.from("csv-uploads").remove([storagePath])
-        if (deleteError) {
-          console.error("Failed to delete storage file:", deleteError)
-          // Don't fail the request if cleanup fails
-        } else {
-          console.log("Deleted temporary storage file:", storagePath)
-        }
-      } catch (cleanupError) {
-        console.error("Storage cleanup error:", cleanupError)
-        // Don't fail the request if cleanup fails
-      }
+      await cleanupStorageFile(storagePath)
     }
 
     return NextResponse.json({
@@ -469,15 +455,7 @@ export async function POST(req: NextRequest) {
 
     // Cleanup: Delete temporary file from storage (if it was a storage upload)
     if (storagePath) {
-      try {
-        const adminClient = await createAdminClient()
-        const { error: deleteError } = await adminClient.storage.from("csv-uploads").remove([storagePath])
-        if (!deleteError) {
-          console.log("Deleted temporary storage file after error:", storagePath)
-        }
-      } catch (cleanupError) {
-        console.error("Storage cleanup error:", cleanupError)
-      }
+      await cleanupStorageFile(storagePath)
     }
 
     return NextResponse.json({ error: "Failed to process file" }, { status: 500 })

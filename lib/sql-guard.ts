@@ -134,6 +134,11 @@ export function sanitizeTableName(datasetId: string): string {
   return `ds_${datasetId.replace(/-/g, "_")}`
 }
 
+export function validateTableName(tableName: string): boolean {
+  // Only allow ds_<uuid with underscores> format (e.g., ds_550e8400_e29b_41d4_a716_446655440000)
+  return /^ds_[a-f0-9_]{36}$/.test(tableName)
+}
+
 export function assessQueryComplexity(sql: string): { allowed: boolean; reason?: string } {
   const upperSQL = sql.toUpperCase()
 

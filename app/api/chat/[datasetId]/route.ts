@@ -58,33 +58,36 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
 
     console.log("Dataset found:", dataset.table_name)
 
+    const pool = getPostgresPool()
+
     const isInitMessage =
       messages.length === 1 &&
       messages[0].role === "user" &&
       messages[0].parts?.some((p: any) => p.type === "text" && p.text === "__INIT__")
 
+    // Fetch schema once for all branches that need it (init, deep-dive reset, deep-dive prompt)
+    const needsSchema = isInitMessage || isDeepDive
+    let schemaRows: { column_name: string; data_type: string }[] = []
+    if (needsSchema) {
+      const columnsResult = await pool.query(
+        `SELECT column_name, data_type FROM information_schema.columns
+         WHERE table_name = $1 AND column_name != 'id' ORDER BY ordinal_position`,
+        [dataset.table_name]
+      )
+      schemaRows = columnsResult.rows
+    }
+
+    // Helper to map PostgreSQL types to simplified labels
+    function mapPgType(dataType: string): string {
+      if (dataType === 'integer' || dataType === 'double precision' || dataType === 'numeric') return 'number'
+      if (dataType === 'boolean') return 'boolean'
+      return 'text'
+    }
+
     if (isInitMessage) {
       console.log("Detected init message, replacing with greeting prompt")
 
-      // Fetch schema information to provide upfront (avoid 17 SQL queries)
-      const pool = getPostgresPool()
-      const columnsQuery = `
-        SELECT column_name, data_type
-        FROM information_schema.columns
-        WHERE table_name = $1 AND column_name != 'id'
-        ORDER BY ordinal_position
-      `
-      const columnsResult = await pool.query(columnsQuery, [dataset.table_name])
-
-      // Format column info concisely
-      const columnInfo = columnsResult.rows.map(col => {
-        const type = col.data_type === 'integer' || col.data_type === 'double precision' || col.data_type === 'numeric'
-          ? 'number'
-          : col.data_type === 'boolean' ? 'boolean' : 'text'
-        return `${col.column_name} (${type})`
-      }).join(', ')
-
-      // Replace __INIT__ with schema-enriched prompt
+      const columnInfo = schemaRows.map(c => `${c.column_name} (${mapPgType(c.data_type)})`).join(', ')
       const schemaInfo = `Dataset: ${dataset.row_count} rows, ${dataset.column_count} columns: ${columnInfo}`
 
       messages = [
@@ -106,24 +109,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
     if (isDeepDive && !isInitMessage) {
       console.log("Deep-dive mode: resetting conversation context")
 
-      // Fetch schema information for context
-      const pool = getPostgresPool()
-      const columnsQuery = `
-        SELECT column_name, data_type
-        FROM information_schema.columns
-        WHERE table_name = $1 AND column_name != 'id'
-        ORDER BY ordinal_position
-      `
-      const columnsResult = await pool.query(columnsQuery, [dataset.table_name])
-
-      // Format column info concisely
-      const columnInfo = columnsResult.rows.map(col => {
-        const type = col.data_type === 'integer' || col.data_type === 'double precision' || col.data_type === 'numeric'
-          ? 'number'
-          : col.data_type === 'boolean' ? 'boolean' : 'text'
-        return `${col.column_name} (${type})`
-      }).join(', ')
-
+      const columnInfo = schemaRows.map(c => `${c.column_name} (${mapPgType(c.data_type)})`).join(', ')
       const schemaInfo = `Dataset: ${dataset.row_count} rows, ${dataset.column_count} columns: ${columnInfo}`
 
       // Get current user message (last message in array)
@@ -148,8 +134,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
       console.log("Conversation reset complete. Starting fresh deep-dive analysis.")
     }
 
-    const pool = getPostgresPool()
-
     // Create AI tools with runtime context using factory pattern
     const tools = {
       executeSQLQuery: createSQLQueryTool({
@@ -167,25 +151,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
       })
     }
 
-    // Deep-dive prompt is now imported from lib/prompts/chat-prompts.ts
-    // Fetch schema for deep-dive mode
-    let schemaColumns = ''
-    if (isDeepDive) {
-      const pool = getPostgresPool()
-      const columnsQuery = `
-        SELECT column_name, data_type
-        FROM information_schema.columns
-        WHERE table_name = $1 AND column_name != 'id'
-        ORDER BY ordinal_position
-      `
-      const columnsResult = await pool.query(columnsQuery, [dataset.table_name])
-      schemaColumns = columnsResult.rows.map(col => {
-        const type = col.data_type === 'integer' || col.data_type === 'double precision' || col.data_type === 'numeric'
-          ? 'number'
-          : col.data_type === 'boolean' ? 'boolean' : 'text'
-        return `- ${col.column_name} (${type})`
-      }).join('\n')
-    }
+    // Build schema columns for deep-dive system prompt
+    const schemaColumns = isDeepDive
+      ? schemaRows.map(c => `- ${c.column_name} (${mapPgType(c.data_type)})`).join('\n')
+      : ''
 
     // Build adaptive deep-dive system prompt
     const deepDiveSystemPrompt = buildDeepDiveSystemPrompt(dataset, schemaColumns)

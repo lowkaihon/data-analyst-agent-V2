@@ -76,11 +76,11 @@ export function createSQLQueryTool(params: {
           user_id: user.id,
         }).select('id').single()
 
-        if (insertError) {
+        if (insertError || !runData) {
           console.error("Error inserting run:", insertError)
         }
 
-        const queryId = runData?.id
+        const queryId = runData?.id ?? null
 
         // Return preview (first 5 rows) instead of full dataset to save tokens
         const preview = result.rows.slice(0, 5)
@@ -139,12 +139,13 @@ Format your response with:
 
         return {
           success: true,
-          queryId: queryId, // ID to reference this query's data
+          queryId, // ID to reference this query's data (null if run insert failed)
           rowCount: result.rowCount,
           columns: result.fields.map((f: any) => f.name), // Column names from query results
-          preview: preview, // Small preview for AI to examine
-          analysis: analysis, // NEW: Full-dataset insights from sub-agent
+          preview, // Small preview for AI to examine
+          analysis, // Full-dataset insights from sub-agent
           reasoning,
+          ...(queryId === null && { note: "Query succeeded but results were not saved. Chart creation is unavailable for this query." }),
         }
       } catch (error: any) {
         console.error("SQL execution error:", error)

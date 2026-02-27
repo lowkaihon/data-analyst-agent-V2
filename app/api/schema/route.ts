@@ -1,13 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { getPostgresPool } from "@/lib/postgres"
+import { validateTableName } from "@/lib/sql-guard"
 import type { ColumnStat } from "@/lib/types"
-
-// Validate table name to prevent SQL injection
-function validateTableName(tableName: string): boolean {
-  // Only allow ds_<uuid with underscores> format (e.g., ds_550e8400_e29b_41d4_a716_446655440000)
-  return /^ds_[a-f0-9_]{36}$/.test(tableName)
-}
 
 export async function GET(req: NextRequest) {
   try {
@@ -72,48 +67,34 @@ export async function GET(req: NextRequest) {
     const countResult = await pool.query(countQuery)
     const totalRows = parseInt(countResult.rows[0].total)
 
-    // Build statistics query for all columns
-    const columnStats: ColumnStat[] = []
+    // Build a single stats query for all columns (avoids N+1 round trips)
+    const statsUnions = columnsResult.rows.map(col => {
+      const cn = col.column_name
+      return `SELECT
+        '${cn}' as col_name,
+        '${col.data_type}' as data_type,
+        COUNT(*) FILTER (WHERE "${cn}" IS NULL) as null_count,
+        COUNT(DISTINCT "${cn}") as unique_count,
+        MIN("${cn}"::text) as min_val,
+        MAX("${cn}"::text) as max_val
+      FROM ${tableName}`
+    }).join(' UNION ALL ')
 
-    for (const col of columnsResult.rows) {
-      const columnName = col.column_name
-      const dataType = col.data_type
+    const statsResult = await pool.query(statsUnions)
 
-      // Map PostgreSQL types to our simplified types
+    // Map results to ColumnStat array
+    const columnStats: ColumnStat[] = statsResult.rows.map(stats => {
       let type: "number" | "boolean" | "string"
-      if (dataType === "integer" || dataType === "double precision" || dataType === "numeric") {
+      if (stats.data_type === "integer" || stats.data_type === "double precision" || stats.data_type === "numeric") {
         type = "number"
-      } else if (dataType === "boolean") {
+      } else if (stats.data_type === "boolean") {
         type = "boolean"
       } else {
         type = "string"
       }
 
-      // Build stats query based on column type
-      let statsQuery: string
-      if (type === "number") {
-        statsQuery = `
-          SELECT
-            COUNT(*) FILTER (WHERE "${columnName}" IS NULL) as null_count,
-            COUNT(DISTINCT "${columnName}") as unique_count,
-            MIN("${columnName}") as min_val,
-            MAX("${columnName}") as max_val
-          FROM ${tableName}
-        `
-      } else {
-        statsQuery = `
-          SELECT
-            COUNT(*) FILTER (WHERE "${columnName}" IS NULL) as null_count,
-            COUNT(DISTINCT "${columnName}") as unique_count
-          FROM ${tableName}
-        `
-      }
-
-      const statsResult = await pool.query(statsQuery)
-      const stats = statsResult.rows[0]
-
       const stat: ColumnStat = {
-        name: columnName,
+        name: stats.col_name,
         type: type,
         null_count: parseInt(stats.null_count),
         null_percent: (parseInt(stats.null_count) / totalRows) * 100,
@@ -125,8 +106,8 @@ export async function GET(req: NextRequest) {
         stat.max = parseFloat(stats.max_val)
       }
 
-      columnStats.push(stat)
-    }
+      return stat
+    })
 
     return NextResponse.json({ columns: columnStats })
   } catch (error) {
