@@ -70,13 +70,15 @@ export async function GET(req: NextRequest) {
     // Build a single stats query for all columns (avoids N+1 round trips)
     const statsUnions = columnsResult.rows.map(col => {
       const cn = col.column_name
+      const dt = col.data_type
+      const isNumeric = dt === "integer" || dt === "double precision" || dt === "numeric"
       return `SELECT
         '${cn}' as col_name,
-        '${col.data_type}' as data_type,
+        '${dt}' as data_type,
         COUNT(*) FILTER (WHERE "${cn}" IS NULL) as null_count,
         COUNT(DISTINCT "${cn}") as unique_count,
-        MIN("${cn}"::text) as min_val,
-        MAX("${cn}"::text) as max_val
+        ${isNumeric ? `MIN("${cn}")::text` : 'NULL::text'} as min_val,
+        ${isNumeric ? `MAX("${cn}")::text` : 'NULL::text'} as max_val
       FROM ${tableName}`
     }).join(' UNION ALL ')
 
