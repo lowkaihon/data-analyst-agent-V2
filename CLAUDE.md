@@ -95,7 +95,7 @@ This project strictly uses **pnpm**. Do not use npm or yarn.
 
 ### Server-Side: streamText() for API Routes
 
-Uses AI SDK 5's `streamText()` for streaming responses with tools:
+Uses AI SDK 6's `streamText()` for streaming responses with tools:
 
 ```typescript
 import { streamText, convertToModelMessages, stepCountIs } from 'ai'
@@ -104,8 +104,8 @@ import { openai } from '@ai-sdk/openai'
 export async function POST(req: Request) {
   const { messages, schema, sample } = await req.json()
 
-  // Convert UIMessages to ModelMessages
-  const modelMessages = convertToModelMessages(messages)
+  // Convert UIMessages to ModelMessages (async in v6)
+  const modelMessages = await convertToModelMessages(messages)
 
   const result = streamText({
     model: openai("gpt-5"),
@@ -121,7 +121,7 @@ export async function POST(req: Request) {
 ```
 
 **Critical patterns:**
-- Use `convertToModelMessages()` to convert UIMessages from useChat
+- `convertToModelMessages()` is **async in v6** — always use `await`
 - Use `toUIMessageStreamResponse()` to return compatible stream for useChat
 - Tool results automatically appear in message.parts array
 - Use `stepCountIs(n)` for multi-step tool execution
@@ -155,7 +155,7 @@ sendMessage("string")                      // ❌ WRONG - causes runtime errors
 - Messages use `parts` array, NOT `content` field
 - Access text: `message.parts?.filter(p => p.type === "text").map(p => p.text).join("")`
 - Tool calls: `message.parts?.filter(p => p.type?.startsWith("tool-"))`
-- Tool states: `input-streaming`, `input-available`, `output-available`, `output-error`
+- Tool states: `input-streaming`, `input-available`, `approval-requested`, `approval-responded`, `output-available`, `output-error`, `output-denied`
 
 Requires environment variables in `.env.local`
 
@@ -194,7 +194,7 @@ This documentation is essential for understanding:
 
 ### Multi-Step Tool Execution with stepCountIs()
 
-**IMPORTANT**: The AI SDK API has evolved (v5.0.44+). Always use current patterns:
+**IMPORTANT**: AI SDK 6 patterns. Always use current patterns:
 
 ```typescript
 const result = streamText({
@@ -230,6 +230,9 @@ const result = streamText({
   - `description`: Clear explanation of the tool's purpose (influences tool selection)
   - `inputSchema`: Zod schema defining input parameters
   - `execute`: Async function performing the tool's action
+  - `needsApproval` (v6): Optional boolean or function for human-in-the-loop approval
+  - `strict` (v6): Optional per-tool strict JSON schema validation
+  - `inputExamples` (v6): Optional concrete input examples to guide model behavior
 
 ### Tool Call Monitoring
 

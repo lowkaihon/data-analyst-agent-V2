@@ -164,7 +164,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ dataset
     const result = streamText({
       model: openai(isDeepDive ? "gpt-5-mini" : "gpt-4o-mini"),
       system: isDeepDive ? deepDiveSystemPrompt : systemPrompt,
-      messages: convertToModelMessages(messages),
+      messages: await convertToModelMessages(messages),
       tools,
       stopWhen: stepCountIs(isDeepDive ? 50 : 10),  // Deep dive: supports 22-35 queries + 6-7 charts (28-42 tool calls) with comfortable buffer. Normal: responsive Q&A (10 steps).
       // Only apply reasoning options for deep-dive mode (gpt-5-mini).

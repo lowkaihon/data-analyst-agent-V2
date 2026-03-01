@@ -88,7 +88,7 @@ Generate comprehensive business intelligence reports powered by GPT-5 using data
 ### Frontend
 - **Next.js 16** with TypeScript and App Router
 - **shadcn/ui** + Tailwind CSS for UI components
-- **AI SDK 5** (`@ai-sdk/react` + `ai`) for streaming chat with multi-step tool calling
+- **AI SDK 6** (`@ai-sdk/react` + `ai`) for streaming chat with multi-step tool calling
   - `useChat` hook with `DefaultChatTransport` for client-side streaming
   - `streamText` with `stepCountIs(10)` for autonomous multi-step workflows
   - `convertToModelMessages` and `toUIMessageStreamResponse` for message compatibility
